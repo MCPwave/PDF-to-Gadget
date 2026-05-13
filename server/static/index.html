@@ -1,0 +1,1277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>PDF-to-Gadget Pipeline · Canonical</title>
+
+<!-- Ubuntu font -->
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@300;400;500;700&family=Ubuntu+Mono:wght@400;700&display=swap" rel="stylesheet"/>
+
+<!-- Mermaid.js -->
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<!-- Highlight.js -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+<style>
+  /* ── Canonical design tokens ──────────────────────────────────────────────── */
+  :root {
+    /* Canonical palette */
+    --canonical-aubergine:  #2C001E;
+    --canonical-aubergine2: #3D0030;
+    --canonical-orange:     #E95420;
+    --canonical-orange-h:   #C7411A;
+
+    /* Dark surface system */
+    --bg:       #1B1B1B;
+    --surface:  #262626;
+    --surface2: #333333;
+    --border:   #444444;
+
+    /* Semantic */
+    --accent:   #E95420;
+    --accent2:  #E95420;
+    --green:    #0E8420;
+    --yellow:   #F99B11;
+    --red:      #C7162B;
+    --text:     #F7F7F7;
+    --muted:    #AEA79F;
+    --radius:   4px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Ubuntu", -apple-system, sans-serif;
+    font-size: 14px;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Header — Canonical aubergine ────────────────────────────────────────── */
+  header {
+    background: var(--canonical-aubergine);
+    border-bottom: 3px solid var(--canonical-orange);
+    padding: 0 24px;
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    flex-shrink: 0;
+    min-height: 56px;
+  }
+
+  .header-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 24px 10px 0;
+    border-right: 1px solid rgba(255,255,255,.12);
+    margin-right: 20px;
+  }
+
+  /* Canonical circle-of-friends logo (CSS) */
+  .canonical-logo {
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+  }
+
+  .header-title { font-size: 15px; font-weight: 500; color: #fff; letter-spacing: .01em; }
+  .header-title small { display: block; font-size: 10px; color: rgba(255,255,255,.55); font-weight: 300; letter-spacing: .08em; text-transform: uppercase; }
+
+  .header-badge {
+    background: var(--canonical-orange);
+    color: #fff;
+    border-radius: 2px;
+    padding: 2px 8px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    align-self: center;
+    margin-right: 4px;
+  }
+
+  .agent-pills { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+  .pill {
+    padding: 3px 10px;
+    border-radius: 2px;
+    font-size: 11px;
+    font-weight: 500;
+    border: 1px solid;
+  }
+  .pill-lib   { color: #E95420; border-color: rgba(233,84,32,.6); }
+  .pill-dt    { color: #AEA79F; border-color: rgba(174,167,159,.5); }
+  .pill-snap  { color: #0E8420; border-color: rgba(14,132,32,.6); }
+  .pill-raci  { color: #F99B11; border-color: rgba(249,155,17,.5); }
+
+  /* model selector */
+  .model-select-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: 10px;
+    padding-left: 12px;
+    border-left: 1px solid rgba(255,255,255,.12);
+  }
+  .model-select-wrap label { font-size: 11px; color: rgba(255,255,255,.55); white-space: nowrap; }
+  #model-select {
+    background: rgba(255,255,255,.08);
+    border: 1px solid rgba(255,255,255,.2);
+    border-radius: 2px;
+    color: #fff;
+    font-family: "Ubuntu", sans-serif;
+    font-size: 12px;
+    padding: 3px 8px;
+    cursor: pointer;
+    max-width: 220px;
+  }
+  #model-select:focus { outline: none; border-color: var(--canonical-orange); }
+  .model-status {
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 2px;
+    font-weight: 600;
+  }
+  .model-status.ok      { background: rgba(14,132,32,.25);   color: #68d17a; }
+  .model-status.off     { background: rgba(199,22,43,.25);    color: #f77; }
+  .model-status.pending { background: rgba(233,84,32,.2);     color: var(--canonical-orange); }
+
+  /* api key input */
+  .key-wrap {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(249,155,17,.5);
+    border-radius: 2px;
+    margin-left: 6px;
+  }
+  .key-wrap label { font-size: 11px; color: var(--yellow); white-space: nowrap; }
+  #api-key-input {
+    background: transparent;
+    border: none;
+    color: #fff;
+    font-size: 12px;
+    font-family: "Ubuntu Mono", monospace;
+    width: 160px;
+    outline: none;
+  }
+  #api-key-input::placeholder { color: rgba(255,255,255,.35); }
+  .key-ok  { font-size: 14px; line-height: 1; cursor: default; }
+  .key-clr { font-size: 12px; color: rgba(255,255,255,.4); cursor: pointer; }
+  .key-clr:hover { color: var(--red); }
+
+  /* ── Main layout ──────────────────────────────── */
+  .layout {
+    display: grid;
+    grid-template-columns: 360px 1fr;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ── Left panel ───────────────────────────────── */
+  .left-panel {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .panel-section {
+    padding: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .panel-section h2 {
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    color: var(--canonical-orange);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  /* Upload zone */
+  .upload-zone {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 24px 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .2s, background .2s;
+  }
+  .upload-zone:hover, .upload-zone.drag {
+    border-color: var(--canonical-orange);
+    background: rgba(233,84,32,.05);
+  }
+  .upload-zone .icon { font-size: 28px; margin-bottom: 8px; }
+  .upload-zone p { color: var(--muted); font-size: 13px; }
+  .upload-zone strong { color: var(--canonical-orange); }
+  #file-input { display: none; }
+
+  /* File info */
+  .file-info {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: var(--surface2);
+    border-radius: var(--radius);
+    border-left: 3px solid var(--canonical-orange);
+    border-top: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+  .file-info .icon { font-size: 20px; }
+  .file-info .name { font-size: 13px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-info .clear { cursor: pointer; color: var(--muted); font-size: 16px; line-height: 1; }
+  .file-info .clear:hover { color: var(--red); }
+
+  /* SOC badge */
+  .soc-info {
+    display: none;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+  }
+  .soc-info .tag {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 2px 8px;
+    font-size: 12px;
+  }
+  .soc-info .tag span { color: var(--canonical-orange); margin-right: 4px; font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
+
+  /* Component list */
+  .components-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+  }
+  .comp-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: background .15s;
+    margin-bottom: 2px;
+  }
+  .comp-item:hover { background: var(--surface2); }
+  .comp-item input[type=checkbox] {
+    width: 16px; height: 16px; cursor: pointer; accent-color: var(--canonical-orange);
+  }
+  .comp-item .comp-icon { font-size: 18px; width: 24px; text-align: center; }
+  .comp-item .comp-details { flex: 1; min-width: 0; }
+  .comp-item .comp-name { font-size: 13px; font-weight: 500; }
+  .comp-item .comp-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .comp-item .comp-badge {
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 2px;
+    border: 1px solid;
+    text-transform: uppercase;
+    font-weight: 600;
+    letter-spacing: .04em;
+  }
+
+  /* type badge colors */
+  .type-i2c      { color: #d2a8ff; border-color: #d2a8ff; }
+  .type-spi      { color: #79c0ff; border-color: #79c0ff; }
+  .type-uart     { color: #ffa657; border-color: #ffa657; }
+  .type-gpio     { color: #7ee787; border-color: #7ee787; }
+  .type-pwm      { color: #ff7b72; border-color: #ff7b72; }
+  .type-usb      { color: #E95420; border-color: #E95420; }
+  .type-ethernet { color: #79c0ff; border-color: #79c0ff; }
+  .type-can      { color: #e3b341; border-color: #e3b341; }
+  .type-hdmi     { color: #E95420; border-color: #E95420; }
+  .type-camera   { color: #bc8cff; border-color: #bc8cff; }
+  .type-other    { color: #AEA79F; border-color: #AEA79F; }
+
+  /* empty state */
+  .empty-state {
+    padding: 32px 16px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .empty-state .big { font-size: 32px; margin-bottom: 8px; }
+
+  /* Run button */
+  .run-section { padding: 12px 16px; }
+  .btn {
+    width: 100%;
+    padding: 10px;
+    border: none;
+    border-radius: var(--radius);
+    font-size: 14px;
+    font-weight: 500;
+    font-family: "Ubuntu", sans-serif;
+    cursor: pointer;
+    transition: background .15s, transform .1s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    letter-spacing: .02em;
+  }
+  .btn:active { transform: scale(.98); }
+  .btn:disabled { opacity: .35; cursor: not-allowed; }
+  .btn-primary {
+    background: var(--canonical-orange);
+    color: #fff;
+  }
+  .btn-primary:hover:not(:disabled) { background: var(--canonical-orange-h); }
+
+  /* ── Right panel ──────────────────────────────── */
+  .right-panel {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* Tabs */
+  .tabs {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 0;
+    flex-shrink: 0;
+  }
+  .tab {
+    padding: 14px 18px;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: "Ubuntu", sans-serif;
+    color: var(--muted);
+    border-bottom: 3px solid transparent;
+    transition: color .15s;
+    white-space: nowrap;
+  }
+  .tab:hover { color: var(--text); border-bottom-color: rgba(233,84,32,.4); }
+  .tab.active { color: #fff; border-bottom-color: var(--canonical-orange); }
+
+  /* Tab content */
+  .tab-content { display: none; flex: 1; overflow: hidden; }
+  .tab-content.active { display: flex; flex-direction: column; }
+
+  /* Terminal / log */
+  .terminal {
+    background: #0F0F0F;
+    font-family: "Ubuntu Mono", "Courier New", monospace;
+    font-size: 13px;
+    padding: 16px;
+    overflow-y: auto;
+    flex: 1;
+    border-top: 1px solid var(--border);
+  }
+  .terminal .log-line { margin-bottom: 4px; line-height: 1.6; }
+  .terminal .log-line.log    { color: #CDCDCD; }
+  .terminal .log-line.done   { color: #68D17A; }
+  .terminal .log-line.error  { color: #F77; }
+  .terminal .log-line.conflict { color: var(--yellow); }
+  .terminal .log-line::before { content: "$ "; color: var(--canonical-orange); }
+  .terminal .cursor {
+    display: inline-block;
+    width: 8px; height: 14px;
+    background: var(--canonical-orange);
+    vertical-align: bottom;
+    animation: blink 1s step-start infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* Code viewer */
+  .code-viewer {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
+  }
+  .code-toolbar {
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+  .code-toolbar .filename {
+    font-size: 12px;
+    color: var(--canonical-orange);
+    font-family: "Ubuntu Mono", monospace;
+    flex: 1;
+  }
+  .btn-small {
+    padding: 4px 12px;
+    border-radius: 2px;
+    border: 1px solid var(--canonical-orange);
+    background: transparent;
+    color: var(--canonical-orange);
+    cursor: pointer;
+    font-size: 12px;
+    font-family: "Ubuntu", sans-serif;
+    transition: background .15s;
+  }
+  .btn-small:hover { background: rgba(233,84,32,.15); }
+
+  .code-viewer pre {
+    margin: 0;
+    padding: 16px;
+    overflow: auto;
+    flex: 1;
+    font-size: 13px;
+    font-family: "Ubuntu Mono", monospace;
+    line-height: 1.6;
+  }
+  .code-viewer pre code { background: none; padding: 0; }
+
+  /* Mermaid diagram */
+  .diagram-viewer {
+    flex: 1;
+    overflow: auto;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: #111;
+  }
+  .diagram-viewer .mermaid-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-top: 3px solid var(--canonical-orange);
+    border-radius: var(--radius);
+    padding: 24px;
+    max-width: 100%;
+  }
+
+  /* Placeholder */
+  .placeholder {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+    gap: 12px;
+  }
+  .placeholder .big { font-size: 48px; }
+  .placeholder p { font-size: 14px; }
+
+  /* RACI Matrix */
+  .raci-container {
+    flex: 1;
+    overflow: auto;
+    padding: 16px;
+  }
+  .raci-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+  }
+  .uc-banner {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-top: 3px solid var(--canonical-orange);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+  }
+  .uc-banner-label {
+    font-size: 13px;
+    margin-bottom: 10px;
+    color: var(--text);
+  }
+  .uc-cards { display: flex; gap: 10px; flex-wrap: wrap; }
+  .uc-card {
+    flex: 1;
+    min-width: 160px;
+    border-radius: var(--radius);
+    padding: 10px 14px;
+  }
+  .uc-card-title { font-size: 14px; font-weight: 700; margin-bottom: 2px; }
+  .uc-card-sub   { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+  .uc-card-score { font-size: 12px; margin-bottom: 4px; color: var(--text); }
+  .uc-card-counts { font-size: 11px; line-height: 1.8; }
+  .raci-table th.uc-rec { background: #1a3d1a; color: #68d17a; }
+  .raci-table td.uc-rec { outline: 1px solid rgba(104,209,122,.5); }
+  .raci-legend {
+    font-size: 12px;
+    color: var(--muted);
+    padding: 8px 12px;
+    background: var(--surface);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    line-height: 1.8;
+  }
+  .raci-toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .raci-table-scroll {
+    overflow-x: auto;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+  }
+  .raci-table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 12.5px;
+    font-family: "Ubuntu", sans-serif;
+    min-width: 960px;
+  }
+  .raci-table th {
+    background: var(--canonical-aubergine);
+    color: #fff;
+    padding: 8px 10px;
+    text-align: left;
+    font-weight: 500;
+    border-bottom: 2px solid var(--canonical-orange);
+    white-space: nowrap;
+    letter-spacing: .03em;
+  }
+  .raci-table td {
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+    color: var(--text);
+  }
+  .raci-table tr:hover td { background: rgba(233,84,32,.04); }
+  .raci-table code {
+    background: rgba(255,255,255,.07);
+    padding: 2px 5px;
+    border-radius: 2px;
+    font-size: 11px;
+    font-family: "Ubuntu Mono", monospace;
+  }
+  .raci-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 2px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+  }
+  .uc-col { text-align: center; min-width: 90px; }
+  .raci-r, .raci-a, .raci-i {
+    text-align: center;
+    font-weight: 700;
+    font-size: 13px;
+    cursor: default;
+  }
+  .raci-r { color: var(--canonical-orange); }
+  .raci-a { color: #AEA79F; }
+  .raci-c { color: #d2a8ff; font-size: 11px; }
+  .raci-i { color: #666; }
+  .raci-table a { color: var(--canonical-orange); text-decoration: none; }
+  .raci-table a:hover { text-decoration: underline; }
+  .c-text { max-width: 160px; display: inline-block; overflow: hidden;
+            text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
+
+  /* Downloads panel */
+  .downloads-panel {
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .download-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--canonical-orange);
+    border-radius: var(--radius);
+    padding: 16px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    transition: border-color .15s;
+  }
+  .download-card:hover { border-color: var(--canonical-orange); }
+  .download-card .icon { font-size: 28px; }
+  .download-card .info { flex: 1; }
+  .download-card .info strong { display: block; font-size: 14px; }
+  .download-card .info span { font-size: 12px; color: var(--muted); }
+  .download-card a {
+    padding: 6px 16px;
+    border-radius: 2px;
+    background: var(--canonical-orange);
+    color: #fff;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 500;
+    font-family: "Ubuntu", sans-serif;
+    transition: background .15s;
+  }
+  .download-card a:hover { background: var(--canonical-orange-h); }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--canonical-orange); }
+
+  /* select all / none */
+  .sel-links { display: flex; gap: 10px; margin-top: 6px; }
+  .sel-links a { font-size: 11px; color: var(--canonical-orange); cursor: pointer; text-decoration: underline; }
+
+  /* progress */
+  #upload-progress { color: var(--canonical-orange); font-size: 12px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-brand">
+    <!-- Canonical circle-of-friends SVG logo -->
+    <svg class="canonical-logo" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="18" cy="6"  r="4.5" fill="#E95420"/>
+      <circle cx="30" cy="27" r="4.5" fill="#E95420"/>
+      <circle cx="6"  cy="27" r="4.5" fill="#E95420"/>
+      <line x1="18" y1="10.5" x2="27.5" y2="23.5" stroke="#E95420" stroke-width="1.5" opacity=".5"/>
+      <line x1="18" y1="10.5" x2="8.5"  y2="23.5" stroke="#E95420" stroke-width="1.5" opacity=".5"/>
+      <line x1="8.5" y1="27"  x2="27.5" y2="27"   stroke="#E95420" stroke-width="1.5" opacity=".5"/>
+    </svg>
+    <div class="header-title">
+      PDF-to-Gadget Pipeline
+      <small>Canonical · Ubuntu Core</small>
+    </div>
+  </div>
+
+  <span class="header-badge">Ubuntu Core</span>
+
+  <div class="agent-pills">
+    <span class="pill pill-lib">@librarian</span>
+    <span class="pill pill-dt">@dt_architect</span>
+    <span class="pill pill-snap">@snap_engineer</span>
+    <span class="pill pill-raci">@kernel_scout</span>
+    <div class="model-select-wrap">
+      <label>Model</label>
+      <select id="model-select">
+        <option value="">auto-detect</option>
+      </select>
+      <span class="model-status pending" id="model-status">loading…</span>
+    </div>
+    <div class="key-wrap" id="key-wrap">
+      <label id="key-label">🔑 API Key</label>
+      <input type="password" id="api-key-input" placeholder="paste key here…" autocomplete="off"/>
+      <span class="key-ok" id="key-ok" style="display:none" title="Key set">✅</span>
+      <span class="key-clr" id="key-clr" title="Clear key">✕</span>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- ── Left panel ──────────────────────────────────────── -->
+  <div class="left-panel">
+
+    <!-- Upload -->
+    <div class="panel-section">
+      <h2>📄 Datasheet</h2>
+      <div class="upload-zone" id="upload-zone">
+        <div class="icon">📂</div>
+        <p>Drop <strong>PDF or TXT</strong> datasheet here<br/>or <strong>click to browse</strong></p>
+      </div>
+      <input type="file" id="file-input" accept=".pdf,.txt,.text"/>
+      <div class="file-info" id="file-info">
+        <span class="icon">📄</span>
+        <span class="name" id="file-name"></span>
+        <span class="clear" id="file-clear" title="Remove">✕</span>
+      </div>
+      <div class="soc-info" id="soc-info">
+        <div class="tag"><span>Board</span><strong id="board-name">—</strong></div>
+        <div class="tag"><span>SoC</span><strong id="soc-name">—</strong></div>
+        <div class="tag"><span>Arch</span><strong id="soc-arch">—</strong></div>
+        <div class="tag"><span>Core</span><strong id="soc-core">—</strong></div>
+        <div class="tag"><span>Mode</span><strong id="parse-mode">—</strong></div>
+      </div>
+      <div id="upload-progress" style="display:none; margin-top:10px; color:var(--muted); font-size:12px;">
+        ⏳ Analysing datasheet…
+      </div>
+    </div>
+
+    <!-- Components -->
+    <div class="panel-section" style="padding-bottom:6px;">
+      <h2>🔌 Components
+        <span id="comp-count" style="color:var(--text); font-weight:400; text-transform:none; letter-spacing:0;"></span>
+      </h2>
+      <div class="sel-links" id="sel-links" style="display:none;">
+        <a id="sel-all">Select all</a>
+        <a id="sel-none">Select none</a>
+      </div>
+    </div>
+
+    <div class="components-list" id="components-list">
+      <div class="empty-state">
+        <div class="big">🔌</div>
+        <p>Upload a datasheet to<br/>detect components</p>
+      </div>
+    </div>
+
+    <!-- Run button -->
+    <div class="run-section">
+      <button class="btn btn-primary" id="run-btn" disabled>
+        <span>▶</span> Run Pipeline
+      </button>
+    </div>
+
+  </div><!-- /left-panel -->
+
+  <!-- ── Right panel ─────────────────────────────────────── -->
+  <div class="right-panel">
+
+    <div class="tabs">
+      <div class="tab active" data-tab="terminal">🖥 Pipeline Log</div>
+      <div class="tab" data-tab="diagram">📊 Block Diagram</div>
+      <div class="tab" data-tab="dts">🌳 Device Tree</div>
+      <div class="tab" data-tab="gadget">📦 gadget.yaml</div>
+      <div class="tab" data-tab="snapcraft">🔧 snapcraft.yaml</div>
+      <div class="tab" data-tab="raci">🔬 RACI Matrix</div>
+      <div class="tab" data-tab="downloads">⬇ Downloads</div>
+    </div>
+
+    <!-- Terminal tab -->
+    <div class="tab-content active" id="tab-terminal">
+      <div class="terminal" id="terminal">
+        <div class="log-line log">PDF-to-Gadget Pipeline ready.</div>
+        <div class="log-line log">Upload a datasheet to begin.</div>
+        <span class="cursor"></span>
+      </div>
+    </div>
+
+    <!-- Diagram tab -->
+    <div class="tab-content" id="tab-diagram">
+      <div class="diagram-viewer" id="diagram-viewer">
+        <div class="placeholder">
+          <div class="big">📊</div>
+          <p>Block diagram appears after pipeline runs</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- DTS tab -->
+    <div class="tab-content" id="tab-dts">
+      <div class="code-viewer">
+        <div class="code-toolbar">
+          <span class="filename">board.dts</span>
+          <button class="btn-small" onclick="copyCode('dts-code')">📋 Copy</button>
+        </div>
+        <pre><code id="dts-code" class="language-c">-- run the pipeline to generate board.dts --</code></pre>
+      </div>
+    </div>
+
+    <!-- gadget.yaml tab -->
+    <div class="tab-content" id="tab-gadget">
+      <div class="code-viewer">
+        <div class="code-toolbar">
+          <span class="filename">gadget.yaml</span>
+          <button class="btn-small" onclick="copyCode('gadget-code')">📋 Copy</button>
+        </div>
+        <pre><code id="gadget-code" class="language-yaml">-- run the pipeline to generate gadget.yaml --</code></pre>
+      </div>
+    </div>
+
+    <!-- snapcraft.yaml tab -->
+    <div class="tab-content" id="tab-snapcraft">
+      <div class="code-viewer">
+        <div class="code-toolbar">
+          <span class="filename">snapcraft.yaml</span>
+          <button class="btn-small" onclick="copyCode('snapcraft-code')">📋 Copy</button>
+        </div>
+        <pre><code id="snapcraft-code" class="language-yaml">-- run the pipeline to generate snapcraft.yaml --</code></pre>
+      </div>
+    </div>
+
+    <!-- RACI tab -->
+    <div class="tab-content" id="tab-raci">
+      <div class="raci-container" id="raci-container">
+        <div class="placeholder">
+          <div class="big">🔬</div>
+          <p>RACI matrix appears after pipeline runs</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Downloads tab -->
+    <div class="tab-content" id="tab-downloads">
+      <div class="downloads-panel" id="downloads-panel">
+        <div class="placeholder" style="padding:40px 0;">
+          <div class="big">⬇️</div>
+          <p>Generated files appear here after the pipeline runs</p>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /right-panel -->
+
+</div><!-- /layout -->
+
+<script>
+  mermaid.initialize({ startOnLoad: false, theme: 'dark',
+    themeVariables: { primaryColor: '#2C001E', primaryBorderColor: '#E95420',
+                      primaryTextColor: '#F7F7F7', lineColor: '#E95420' } });
+
+  /* ── State ────────────────────────────────────────────────────── */
+  let sessionId   = null;
+  let hwMap       = null;
+  let resultFiles = null;
+
+  /* ── Model selector ───────────────────────────────────────────── */
+  const modelSel    = document.getElementById('model-select');
+  const modelStatus = document.getElementById('model-status');
+  const keyWrap     = document.getElementById('key-wrap');
+  const keyLabel    = document.getElementById('key-label');
+  const keyInput    = document.getElementById('api-key-input');
+  const keyOk       = document.getElementById('key-ok');
+  const keyClear    = document.getElementById('key-clr');
+
+  // per-provider key store (in-memory only)
+  const apiKeys = {};
+
+  // cloud providers that need a key (populated after /api/models)
+  let cloudMeta = {};
+
+  const PROVIDER_ICONS = {
+    openai: '🟢', anthropic: '🟣', gemini: '🔵',
+    groq: '⚡', mistral: '🌊', openrouter: '🔀',
+  };
+
+  async function loadModels() {
+    try {
+      const res  = await fetch('/api/models');
+      const data = await res.json();
+      cloudMeta  = data.cloud || {};
+
+      modelSel.innerHTML = '<option value="">⚡ auto-detect (local first)</option>';
+
+      // local: Ollama
+      if (data.ollama?.length) {
+        const og = document.createElement('optgroup');
+        og.label = '🦙 Ollama (local)';
+        data.ollama.forEach(m => {
+          const o = document.createElement('option');
+          o.value = `ollama:${m}`;
+          o.textContent = m;
+          og.appendChild(o);
+        });
+        modelSel.appendChild(og);
+      }
+
+      // local: LM Studio
+      if (data.lm_studio?.length) {
+        const og = document.createElement('optgroup');
+        og.label = '🖥 LM Studio (local)';
+        data.lm_studio.forEach(m => {
+          const o = document.createElement('option');
+          o.value = `lm_studio:${m}`;
+          o.textContent = m;
+          og.appendChild(o);
+        });
+        modelSel.appendChild(og);
+      }
+
+      // cloud providers
+      for (const [pid, pdata] of Object.entries(cloudMeta)) {
+        const og = document.createElement('optgroup');
+        og.label = `${PROVIDER_ICONS[pid] || '☁️'} ${pdata.label} (cloud)`;
+        pdata.models.forEach(m => {
+          const o = document.createElement('option');
+          o.value = `${pid}:${m}`;
+          o.textContent = m;
+          og.appendChild(o);
+        });
+        modelSel.appendChild(og);
+      }
+
+      const hasLocal = data.ollama?.length || data.lm_studio?.length;
+      modelStatus.textContent = hasLocal ? `${(data.ollama?.length||0)+(data.lm_studio?.length||0)} local` : 'cloud only';
+      modelStatus.className = `model-status ${hasLocal ? 'ok' : 'pending'}`;
+
+      // auto-select first ollama model
+      if (data.ollama?.length) modelSel.value = `ollama:${data.ollama[0]}`;
+
+      updateKeyPrompt();
+    } catch (e) {
+      modelStatus.textContent = 'error';
+      modelStatus.className   = 'model-status off';
+    }
+  }
+  loadModels();
+
+  function getSelectedProvider() {
+    const v = modelSel.value;
+    if (!v || !v.includes(':')) return null;
+    return v.split(':')[0];
+  }
+
+  function needsKey(provider) {
+    return provider && cloudMeta[provider] !== undefined
+        && !['ollama','lm_studio'].includes(provider);
+  }
+
+  function updateKeyPrompt() {
+    const prov = getSelectedProvider();
+    if (needsKey(prov)) {
+      keyWrap.style.display = 'flex';
+      const hint = cloudMeta[prov]?.key_hint || '…';
+      keyLabel.textContent  = `🔑 ${cloudMeta[prov]?.label || prov}`;
+      keyInput.placeholder  = hint;
+      // restore saved key if any
+      keyInput.value = apiKeys[prov] || '';
+      keyOk.style.display   = apiKeys[prov] ? 'inline' : 'none';
+    } else {
+      keyWrap.style.display = 'none';
+    }
+  }
+
+  modelSel.addEventListener('change', updateKeyPrompt);
+
+  keyInput.addEventListener('input', () => {
+    const prov = getSelectedProvider();
+    if (!prov) return;
+    apiKeys[prov] = keyInput.value.trim();
+    keyOk.style.display = apiKeys[prov] ? 'inline' : 'none';
+  });
+
+  keyClear.addEventListener('click', () => {
+    const prov = getSelectedProvider();
+    if (prov) delete apiKeys[prov];
+    keyInput.value = '';
+    keyOk.style.display = 'none';
+  });
+
+  function getActiveApiKey() {
+    const prov = getSelectedProvider();
+    return (prov && apiKeys[prov]) ? apiKeys[prov] : '';
+  }
+
+  /* ── Tab switching ────────────────────────────────────────────── */
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      tab.classList.add('active');
+      document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active');
+    });
+  });
+
+  /* ── Upload zone ──────────────────────────────────────────────── */
+  const zone  = document.getElementById('upload-zone');
+  const inp   = document.getElementById('file-input');
+
+  zone.addEventListener('click',      () => inp.click());
+  zone.addEventListener('dragover',   e => { e.preventDefault(); zone.classList.add('drag'); });
+  zone.addEventListener('dragleave',  () => zone.classList.remove('drag'));
+  zone.addEventListener('drop',       e => { e.preventDefault(); zone.classList.remove('drag'); handleFile(e.dataTransfer.files[0]); });
+  inp.addEventListener('change',      () => { if (inp.files[0]) handleFile(inp.files[0]); });
+
+  document.getElementById('file-clear').addEventListener('click', () => {
+    sessionId = null; hwMap = null;
+    zone.style.display = '';
+    document.getElementById('file-info').style.display   = 'none';
+    document.getElementById('soc-info').style.display    = 'none';
+    document.getElementById('sel-links').style.display   = 'none';
+    document.getElementById('comp-count').textContent    = '';
+    document.getElementById('components-list').innerHTML = `
+      <div class="empty-state"><div class="big">🔌</div><p>Upload a datasheet to<br/>detect components</p></div>`;
+    document.getElementById('run-btn').disabled = true;
+    inp.value = '';
+  });
+
+  async function handleFile(file) {
+    if (!file) return;
+    zone.style.display = 'none';
+    document.getElementById('file-info').style.display   = 'flex';
+    document.getElementById('file-name').textContent     = file.name;
+    document.getElementById('upload-progress').style.display = 'block';
+    switchTab('terminal');
+    clearTerminal();
+    logMsg(`📤 Uploading "${file.name}" via ${modelSel.value || 'auto-detect'}…`);
+
+    const fd = new FormData();
+    fd.append('file', file);
+    if (modelSel.value)      fd.append('model',   modelSel.value);
+    const activeKey = getActiveApiKey();
+    if (activeKey)           fd.append('api_key', activeKey);
+
+    try {
+      const res = await fetch('/api/upload', { method: 'POST', body: fd });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail || 'Upload failed');
+      }
+
+      // upload now returns SSE stream — read line by line
+      const reader  = res.body.getReader();
+      const decoder = new TextDecoder();
+      let   buf     = '';
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const parts = buf.split('\n\n');
+        buf = parts.pop(); // keep incomplete chunk
+
+        for (const part of parts) {
+          if (!part.startsWith('data:')) continue;
+          let evt;
+          try { evt = JSON.parse(part.slice(5).trim()); } catch { continue; }
+
+          if (evt.type === 'log') {
+            logMsg(evt.message);
+          } else if (evt.type === 'error') {
+            logMsg(`❌ ${evt.message}`, 'error');
+            document.getElementById('upload-progress').style.display = 'none';
+          } else if (evt.type === 'upload_done') {
+            document.getElementById('upload-progress').style.display = 'none';
+            const data = evt;
+            sessionId = data.session_id;
+            hwMap = {
+              board_name: data.board_name, soc: data.soc,
+              arch: data.arch, cpu_core: data.cpu_core,
+              peripherals: data.peripherals, power_rails: data.power_rails,
+            };
+
+            document.getElementById('board-name').textContent = data.board_name;
+            document.getElementById('soc-name').textContent   = data.soc;
+            document.getElementById('soc-arch').textContent   = data.arch;
+            document.getElementById('soc-core').textContent   = data.cpu_core || '—';
+            document.getElementById('parse-mode').textContent = data.mode;
+            // show cpu/ram extras if available
+            if (data.cpu_count)   document.getElementById('soc-core').textContent +=
+              ` × ${data.cpu_count}`;
+            if (data.cpu_freq_mhz) document.getElementById('soc-core').textContent +=
+              ` @ ${data.cpu_freq_mhz}MHz`;
+            document.getElementById('soc-info').style.display = 'flex';
+
+            modelStatus.textContent = data.mode;
+            modelStatus.className   = `model-status ${data.mode !== 'heuristic' ? 'ok' : 'off'}`;
+
+            renderComponents(data.peripherals);
+            logMsg(`✅ @librarian complete — ${data.peripherals.length} components found `
+                   + `across ${data.sections_processed} sections (${data.mode})`);
+          }
+        }
+      }
+
+    } catch (err) {
+      document.getElementById('upload-progress').style.display = 'none';
+      logMsg(`❌ ${err.message}`, 'error');
+    }
+  }
+
+  /* ── Component rendering ──────────────────────────────────────── */
+  const TYPE_ICONS = {
+    i2c:'🔗', spi:'⚡', uart:'📡', usart:'📡', gpio:'🔌', pwm:'🌀',
+    usb:'🔷', ethernet:'🌐', can:'🚗', can_fd:'🚗', hdmi:'🖥',
+    mipi_csi:'📷', mipi_dsi:'🖥', camera:'📷', lvds:'📺',
+    pcie:'🚀', sata:'💾', emmc:'💿', sd:'💳', sdio:'💳',
+    i2s:'🎵', sai:'🎵', audio:'🎵', adc:'📊', dac:'📈',
+    qspi:'⚡', jtag:'🔧', swd:'🔧', rtc:'🕐', watchdog:'⏱',
+    displayport:'🖥', nand:'💾', nor_flash:'💾', hyperflash:'💾',
+    touch:'👆', other:'⚙️',
+  };
+
+  function renderComponents(peripherals) {
+    const list = document.getElementById('components-list');
+    if (!peripherals.length) {
+      list.innerHTML = '<div class="empty-state"><div class="big">🔍</div><p>No components detected</p></div>';
+      return;
+    }
+    document.getElementById('sel-links').style.display = 'flex';
+    document.getElementById('comp-count').textContent  = `(${peripherals.length})`;
+    list.innerHTML = peripherals.map(p => `
+      <label class="comp-item">
+        <input type="checkbox" class="comp-check" value="${p.id}" checked/>
+        <span class="comp-icon">${TYPE_ICONS[p.type] || '⚙️'}</span>
+        <span class="comp-details">
+          <span class="comp-name">${p.name}</span>
+          <span class="comp-meta">${p.bus}${p.address ? ' @ '+p.address : ''}${p.voltage ? ' · '+p.voltage : ''}</span>
+        </span>
+        <span class="comp-badge type-${p.type}">${p.type}</span>
+      </label>`).join('');
+    updateRunBtn();
+    document.querySelectorAll('.comp-check').forEach(cb =>
+      cb.addEventListener('change', updateRunBtn));
+  }
+
+  document.getElementById('sel-all').addEventListener('click',  () => setAll(true));
+  document.getElementById('sel-none').addEventListener('click', () => setAll(false));
+  function setAll(v) {
+    document.querySelectorAll('.comp-check').forEach(c => c.checked = v);
+    updateRunBtn();
+  }
+
+  function updateRunBtn() {
+    const any = [...document.querySelectorAll('.comp-check')].some(c => c.checked);
+    document.getElementById('run-btn').disabled = !(sessionId && any);
+  }
+
+  function getSelectedIds() {
+    return [...document.querySelectorAll('.comp-check:checked')].map(c => c.value);
+  }
+
+  /* ── Run pipeline ─────────────────────────────────────────────── */
+  document.getElementById('run-btn').addEventListener('click', runPipeline);
+
+  async function runPipeline() {
+    const selected = getSelectedIds();
+    if (!sessionId || !selected.length) return;
+
+    document.getElementById('run-btn').disabled = true;
+    clearTerminal();
+    switchTab('terminal');
+    logMsg(`🚀 Starting pipeline — ${selected.length} component(s) selected`);
+
+    const resp = await fetch('/api/generate', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ session_id: sessionId, selected_ids: selected }),
+    });
+
+    const reader  = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let   buf     = '';
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const parts = buf.split('\n\n');
+      buf = parts.pop();
+      for (const part of parts) {
+        if (!part.startsWith('data: ')) continue;
+        const payload = JSON.parse(part.slice(6));
+        handleSSE(payload);
+      }
+    }
+    document.getElementById('run-btn').disabled = false;
+  }
+
+  function handleSSE(payload) {
+    if (payload.type === 'log' || payload.type === 'done' ||
+        payload.type === 'error' || payload.type === 'conflict') {
+      logMsg(payload.message, payload.type);
+    }
+    if (payload.type === 'result') {
+      applyResults(payload);
+    }
+  }
+
+  function applyResults(r) {
+    resultFiles = r.files;
+
+    // DTS
+    document.getElementById('dts-code').textContent = r.dts;
+    hljs.highlightElement(document.getElementById('dts-code'));
+
+    // gadget.yaml
+    document.getElementById('gadget-code').textContent = r.gadget_yaml;
+    hljs.highlightElement(document.getElementById('gadget-code'));
+
+    // snapcraft.yaml
+    document.getElementById('snapcraft-code').textContent = r.snapcraft_yaml;
+    hljs.highlightElement(document.getElementById('snapcraft-code'));
+
+    // Mermaid diagram
+    renderMermaid(r.mermaid);
+
+    // RACI matrix
+    if (r.raci_html) renderRaci(r.raci_html, r.files.raci, r.recommended_uc);
+
+    // Downloads
+    renderDownloads(r.files);
+
+    logMsg('📂 Results loaded in tabs above', 'done');
+  }
+
+  async function renderMermaid(code) {
+    const wrap = document.getElementById('diagram-viewer');
+    wrap.innerHTML = '<div class="mermaid-wrap"><div id="mermaid-target"></div></div>';
+    const { svg } = await mermaid.render('mermaid-graph', code);
+    document.getElementById('mermaid-target').innerHTML = svg;
+  }
+
+  function renderRaci(html, csvHref, recommended) {
+    const wrap = document.getElementById('raci-container');
+    const recBadge = recommended
+      ? `<span style="background:#1a3d1a;color:#66ff66;padding:3px 10px;border-radius:10px;
+                       font-size:12px;font-weight:700;border:1px solid #66ff66;">
+           👑 ${recommended} recommended
+         </span>`
+      : '';
+    const toolbar = `
+      <div class="raci-toolbar" style="margin-bottom:8px;">
+        <a href="${csvHref || '#'}" download="raci.csv" class="btn-small" style="text-decoration:none;">⬇ Download CSV</a>
+        ${recBadge}
+      </div>`;
+    wrap.innerHTML = toolbar + html;
+  }
+
+  function renderDownloads(files) {
+    const items = [
+      { icon: '🌳', name: 'board.dts',         desc: 'Linux Device Tree Source', href: files.dts },
+      { icon: '📦', name: 'gadget.yaml',        desc: 'Ubuntu Core Gadget config', href: files.gadget },
+      { icon: '🔧', name: 'snapcraft.yaml',     desc: 'Snapcraft build recipe',   href: files.snapcraft },
+      { icon: '🔬', name: 'raci.csv',          desc: 'RACI matrix (CSV)',        href: files.raci },
+      { icon: '🗂',  name: 'hardware_map.json',  desc: 'Parsed hardware map',      href: files.map },
+    ];
+    document.getElementById('downloads-panel').innerHTML = items.map(i => `
+      <div class="download-card">
+        <span class="icon">${i.icon}</span>
+        <span class="info"><strong>${i.name}</strong><span>${i.desc}</span></span>
+        <a href="${i.href}" download="${i.name}">⬇ Download</a>
+      </div>`).join('');
+  }
+
+  /* ── Terminal helpers ─────────────────────────────────────────── */
+  function logMsg(msg, kind = 'log') {
+    const term = document.getElementById('terminal');
+    // remove cursor first
+    const cur = term.querySelector('.cursor');
+    if (cur) cur.remove();
+    const div = document.createElement('div');
+    div.className = `log-line ${kind}`;
+    div.textContent = msg;
+    term.appendChild(div);
+    const newCur = document.createElement('span');
+    newCur.className = 'cursor';
+    term.appendChild(newCur);
+    term.scrollTop = term.scrollHeight;
+  }
+
+  function clearTerminal() {
+    document.getElementById('terminal').innerHTML = '<span class="cursor"></span>';
+  }
+
+  /* ── Clipboard ────────────────────────────────────────────────── */
+  function copyCode(id) {
+    const text = document.getElementById(id).textContent;
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = event.target;
+      btn.textContent = '✅ Copied';
+      setTimeout(() => btn.textContent = '📋 Copy', 1500);
+    });
+  }
+
+  /* ── Helpers ──────────────────────────────────────────────────── */
+  function switchTab(name) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+    document.querySelectorAll('.tab-content').forEach(c =>
+      c.classList.toggle('active', c.id === `tab-${name}`));
+  }
+</script>
+</body>
+</html>

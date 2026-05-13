@@ -1,0 +1,84 @@
+{
+  "soc": "Unknown SoC",
+  "arch": "arm64",
+  "cpu_core": "Unknown",
+  "peripherals": [
+    {
+      "id": "uart_1",
+      "name": "UART1 Controller",
+      "type": "uart",
+      "bus": "UART1",
+      "address": "",
+      "description": "UART peripheral on UART1",
+      "voltage": "3.3V",
+      "regulator": "vcc-uart"
+    },
+    {
+      "id": "gpio_2",
+      "name": "GPIO2 Controller",
+      "type": "gpio",
+      "bus": "GPIO2",
+      "address": "",
+      "description": "GPIO peripheral on GPIO2",
+      "voltage": "3.3V",
+      "regulator": "vcc-gpio"
+    },
+    {
+      "id": "pwm_2",
+      "name": "PWM2 Controller",
+      "type": "pwm",
+      "bus": "PWM2",
+      "address": "",
+      "description": "PWM peripheral on PWM2",
+      "voltage": "3.3V",
+      "regulator": "vcc-pwm"
+    },
+    {
+      "id": "usb_9",
+      "name": "USB Controller",
+      "type": "usb",
+      "bus": "USB",
+      "address": "",
+      "description": "USB peripheral on USB",
+      "voltage": "3.3V",
+      "regulator": "vcc-usb"
+    },
+    {
+      "id": "usb_2",
+      "name": "USB2 Controller",
+      "type": "usb",
+      "bus": "USB2",
+      "address": "",
+      "description": "USB peripheral on USB2",
+      "voltage": "3.3V",
+      "regulator": "vcc-usb"
+    },
+    {
+      "id": "ethernet_11",
+      "name": "ETHERNET Controller",
+      "type": "ethernet",
+      "bus": "ETHERNET",
+      "address": "",
+      "description": "ETHERNET peripheral on ETHERNET",
+      "voltage": "3.3V",
+      "regulator": "vcc-ethernet"
+    },
+    {
+      "id": "camera_16",
+      "name": "CAMERA Controller",
+      "type": "camera",
+      "bus": "CAMERA",
+      "address": "",
+      "description": "CAMERA peripheral on CAMERA",
+      "voltage": "3.3V",
+      "regulator": "vcc-camera"
+    }
+  ],
+  "power_rails": [
+    {
+      "name": "vcc_5v",
+      "voltage": "3.3V",
+      "supplies": []
+    }
+  ]
+}
