@@ -1176,7 +1176,12 @@
   async function loadModels() {
     try {
       const res  = await fetch('/api/models');
+      if (!res.ok) {
+        console.error(`Failed to load models: HTTP ${res.status}`);
+        throw new Error(`HTTP ${res.status}`);
+      }
       const data = await res.json();
+      console.log('Models loaded:', data);
       cloudMeta  = data.cloud || {};
 
       modelSel.innerHTML = '<option value="">⚡ auto-detect (local first)</option>';
@@ -1229,6 +1234,7 @@
 
       updateKeyPrompt();
     } catch (e) {
+      console.error('Error loading models:', e);
       modelStatus.textContent = 'error';
       modelStatus.className   = 'model-status off';
     }

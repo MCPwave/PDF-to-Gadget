@@ -57,11 +57,11 @@ Open **http://localhost:8000**
 
 | Agent | File | Role | Output |
 |-------|------|------|--------|
-| `@librarian` | `agents/librarian.py` | PDF → hardware map | `hardware_map.json` |
-| `@dt_architect` | `agents/dt_architect.py` | hardware map → DTS | `board.dts` |
-| `@snap_engineer` | `agents/snap_engineer.py` | hardware map → snap files + diagram | `gadget.yaml`, `snapcraft.yaml`, Mermaid SVG |
-| `@kernel_scout` | `agents/kernel_scout.py` | peripheral → upstream driver lookup | driver list |
-| `@raci_builder` | `agents/raci_builder.py` | driver list → RACI matrix | `raci.csv`, HTML table |
+| `@librarian` | `server/agents/librarian.py` | PDF → hardware map | `hardware_map.json` |
+| `@dt_architect` | `server/agents/dt_architect.py` | hardware map → DTS | `board.dts` |
+| `@snap_engineer` | `server/agents/snap_engineer.py` | hardware map → snap files + diagram | `gadget.yaml`, `snapcraft.yaml`, Mermaid SVG |
+| `@kernel_scout` | `server/agents/kernel_scout.py` | peripheral → upstream driver lookup | driver list |
+| `@raci_builder` | `server/agents/raci_builder.py` | driver list → RACI matrix | `raci.csv`, HTML table |
 
 ---
 
@@ -189,14 +189,14 @@ RACI roles:
 
 ### Add a new SoC
 
-`agents/librarian.py` → `_SOC_PATTERNS`:
+`server/agents/librarian.py` → `_SOC_PATTERNS`:
 ```python
 (r"MY_SOC_REGEX", "arm64", "Cortex-A55"),
 ```
 
 ### Add a driver to the RACI DB
 
-`agents/kernel_scout.py` → `_DRIVER_DB`:
+`server/agents/kernel_scout.py` → `_DRIVER_DB`:
 ```python
 ("MY_SOC_RE", "peripheral_type", {
     "module":     "my-driver",
@@ -214,22 +214,47 @@ RACI roles:
 
 ```
 cop1/
+├── README.md                          # Main readme
+├── .github/
+│   └── copilot-instructions.md       # AI assistant instructions
+├── .gitignore                         # Ignore unnecessary files
+├── docs/                              # All documentation
+│   ├── ARCHITECTURE.md               # Agent persona definitions
+│   ├── COMPONENTS.md                 # Hardware map & component schema
+│   ├── DEVELOPMENT.md                # Server architecture & orchestrator
+│   ├── DEDUPLICATION.md              # Multi-PDF merging & validation
+│   ├── skill.md                      # Copilot CLI skill definition
+│   ├── snap-engineer.md              # Snap packaging guide
+│   ├── system-manifest.md            # System stage tracking
+│   ├── web-interface-logic.md        # Web UI & diagram generation
+│   ├── superpowers.md                # (reserved)
+│   └── guides/
+│       ├── multi-pdf-workflow.md     # Multi-PDF merging workflow
+│       ├── component-extraction.md   # Board vs component detection
+│       └── validation-rules.md       # Endpoint changes & validation
+├── .config/                          # AI assistant & IDE configs
+│   ├── .agents/                      # GitHub Copilot CLI config
+│   ├── .clinerules/                  # Claude Linter rules
+│   ├── .cursor/                      # Cursor IDE config
+│   ├── .opencode/                    # OpenCode config (with node_modules)
+│   └── .windsurf/                    # Windsurf IDE config
 ├── server/
-│   ├── main.py                 # FastAPI app, SSE endpoints
-│   ├── start.sh                # launch script
-│   ├── agents/
-│   │   ├── librarian.py        # PDF → hardware_map
-│   │   ├── dt_architect.py     # hardware_map → DTS
-│   │   ├── snap_engineer.py    # hardware_map → gadget snap + diagram
-│   │   ├── kernel_scout.py     # peripheral → upstream driver DB
-│   │   └── raci_builder.py     # driver list → RACI HTML/CSV
+│   ├── main.py                       # FastAPI app, SSE endpoints
+│   ├── start.sh                      # Launch script
+│   ├── agents/                       # AI agent modules
+│   │   ├── librarian.py              # PDF → hardware_map
+│   │   ├── dt_architect.py           # hardware_map → DTS
+│   │   ├── snap_engineer.py          # hardware_map → snap + diagram
+│   │   ├── kernel_scout.py           # peripheral → driver lookup
+│   │   └── raci_builder.py           # driver list → RACI matrix
 │   ├── static/
-│   │   └── index.html          # Single-page app
-│   └── output/                 # Generated artifacts (git-ignored)
-├── agents.md                   # Agent persona definitions
-├── .agents/skills/pdf-to-gadget/skill.md  # Copilot CLI skill
-└── README.md
+│   │   └── index.html                # Single-page web UI
+│   └── output/                       # Generated artifacts (git-ignored)
+├── tests/                            # Test files (if any)
+└── .gitignore                        # Git ignore rules
 ```
+
+**Config moved to `.config/`** for cleaner root directory. All AI assistant configs (Copilot CLI, Cursor, Windsurf, etc.) are now organized in one place.
 
 ---
 
