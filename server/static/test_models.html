@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head><title>Test Models</title></head>
+<body>
+<select id="model-select"></select>
+<span id="model-status">loading…</span>
+
+<script>
+console.log("Script starting...");
+const modelSel = document.getElementById('model-select');
+const modelStatus = document.getElementById('model-status');
+
+console.log("modelSel:", modelSel);
+console.log("modelStatus:", modelStatus);
+
+const PROVIDER_ICONS = {
+  openai: '🟢', anthropic: '🟣', gemini: '🔵',
+  groq: '⚡', mistral: '🌊', openrouter: '🔀',
+};
+
+let cloudMeta = {};
+
+async function loadModels() {
+  console.log("loadModels called");
+  try {
+    console.log("Fetching /api/models...");
+    const res = await fetch('/api/models');
+    console.log("Response:", res);
+    const data = await res.json();
+    console.log("Data:", data);
+    
+    cloudMeta = data.cloud || {};
+    modelSel.innerHTML = '<option value="">⚡ auto-detect</option>';
+    
+    if (data.ollama?.length) {
+      console.log("Adding Ollama:", data.ollama);
+      const og = document.createElement('optgroup');
+      og.label = '🦙 Ollama';
+      data.ollama.forEach(m => {
+        const o = document.createElement('option');
+        o.value = `ollama:${m}`;
+        o.textContent = m;
+        og.appendChild(o);
+      });
+      modelSel.appendChild(og);
+    }
+    
+    modelStatus.textContent = "loaded";
+    console.log("loadModels complete");
+  } catch (e) {
+    console.error("Error:", e);
+    modelStatus.textContent = "error: " + e.message;
+  }
+}
+
+console.log("Calling loadModels()...");
+loadModels();
+</script>
+</body>
+</html>
