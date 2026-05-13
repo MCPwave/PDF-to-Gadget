@@ -263,43 +263,6 @@
   .soc-info .tag span { color: var(--canonical-orange); margin-right: 4px; font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
 
   /* Board and Components sections */
-  .board-section {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 12px;
-    margin-bottom: 12px;
-  }
-  .board-section h3 {
-    font-size: 13px;
-    font-weight: 600;
-    margin-bottom: 8px;
-    color: var(--canonical-orange);
-    text-transform: uppercase;
-    letter-spacing: .05em;
-  }
-  .board-details {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-    font-size: 12px;
-  }
-  .board-detail {
-    padding: 6px;
-    background: rgba(233, 84, 32, .05);
-    border-radius: 2px;
-  }
-  .board-detail .label {
-    color: var(--muted);
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: .04em;
-    margin-bottom: 2px;
-  }
-  .board-detail .value {
-    color: var(--text);
-    font-weight: 500;
-  }
 
   /* Component list */
   .components-list {
@@ -807,19 +770,6 @@
     margin-bottom: 4px;
   }
   .comp-validation-drivers .driver:last-child { margin-bottom: 0; }
-  .comp-validation-drivers .driver .status {
-    display: inline-block;
-    padding: 1px 4px;
-    border-radius: 2px;
-    font-size: 9px;
-    font-weight: 600;
-    text-transform: uppercase;
-    margin-left: 4px;
-  }
-  .comp-validation-drivers .driver .status.mainline { background: var(--green); color: #fff; }
-  .comp-validation-drivers .driver .status.backport { background: var(--yellow); color: #000; }
-  .comp-validation-drivers .driver .status.vendor { background: var(--canonical-orange); color: #fff; }
-  .comp-validation-drivers .driver .status.unknown { background: var(--muted); color: #000; }
 
   .comp-validation-alternatives {
     margin-top: 8px;
@@ -856,18 +806,6 @@
     font-weight: 600;
     flex: 1;
   }
-  .alt-radio-option .alt-driver-status {
-    display: inline-block;
-    padding: 1px 4px;
-    border-radius: 2px;
-    font-size: 9px;
-    font-weight: 600;
-    text-transform: uppercase;
-  }
-  .alt-radio-option .alt-driver-status.mainline { background: var(--green); color: #fff; }
-  .alt-radio-option .alt-driver-status.backport { background: var(--yellow); color: #000; }
-  .alt-radio-option .alt-driver-status.vendor { background: var(--canonical-orange); color: #fff; }
-  .alt-radio-option .alt-driver-status.unknown { background: var(--muted); color: #000; }
 
   .conflicts-table {
     width: 100%;
@@ -1005,12 +943,6 @@
         <div class="tag"><span>Arch</span><strong id="soc-arch">—</strong></div>
         <div class="tag"><span>Core</span><strong id="soc-core">—</strong></div>
         <div class="tag"><span>Mode</span><strong id="parse-mode">—</strong></div>
-      </div>
-      
-      <!-- Board Details Section (new) -->
-      <div class="board-section" id="board-section" style="display:none;">
-        <h3>🖥 Board</h3>
-        <div class="board-details" id="board-details"></div>
       </div>
       
       <div id="upload-progress" style="display:none; margin-top:10px; color:var(--muted); font-size:12px;">
@@ -1399,7 +1331,6 @@
     document.getElementById('comp-count').textContent    = '';
     document.getElementById('components-list').innerHTML = `
       <div class="empty-state"><div class="big">🔌</div><p>Upload a datasheet to<br/>detect components</p></div>`;
-    document.getElementById('board-section').style.display = 'none';
     document.getElementById('validation-section').style.display = 'none';
     document.getElementById('run-btn').disabled = true;
     inp.value = '';
@@ -1482,7 +1413,6 @@
             modelStatus.className = `model-status ${data.mode !== 'heuristic' ? 'ok' : 'off'}`;
 
             renderComponents(data.peripherals);
-            renderBoardSection(data);
             logMsg(`✅ Upload complete — ${data.peripherals.length} components found, ` +
                    `${data.files_processed} file(s) processed`);
             
@@ -1575,13 +1505,7 @@
             <div class="value">${conflict.message || '—'}</div>
           </div>`;
       
-      // Show driver status if available
-      if (conflict.driver_status) {
-        html += `<div class="item">
-          <div class="label">Driver</div>
-          <div class="value">${conflict.driver_name || '—'} <span class="status" style="display:inline-block;padding:1px 4px;border-radius:2px;font-size:9px;font-weight:600;text-transform:uppercase;margin-left:4px;background:${getDriverStatusColor(conflict.driver_status)};color:#fff;">${conflict.driver_status}</span></div>
-        </div>`;
-      }
+      // Driver status removed as per user request
       
       html += '</div>';
 
@@ -1596,7 +1520,6 @@
           html += `<label class="alt-radio-option">
             <input type="radio" name="conflict-${idx}" value="${JSON.stringify(alt).replace(/"/g, '&quot;')}" id="${radioId}"/>
             <span class="alt-type">${alt.connection_type}</span>
-            <span class="alt-driver-status ${alt.driver_status}">${alt.driver_status}</span>
           </label>`;
         });
         
@@ -1617,44 +1540,8 @@
     updateRunBtn();
   }
 
-  function getDriverStatusColor(status) {
-    switch(status) {
-      case 'mainline': return '#0E8420';
-      case 'backport': return '#F99B11';
-      case 'vendor': return '#E95420';
-      default: return '#AEA79F';
-    }
-  }
 
   /* ── Component rendering ──────────────────────────────────────── */
-  function renderBoardSection(boardData) {
-    const section = document.getElementById('board-section');
-    const details = document.getElementById('board-details');
-    
-    if (!boardData.soc) {
-      section.style.display = 'none';
-      return;
-    }
-    
-    const fields = [
-      { label: 'Board Name', value: boardData.board_name || '—' },
-      { label: 'SoC', value: boardData.soc || '—' },
-      { label: 'Architecture', value: boardData.arch || '—' },
-      { label: 'CPU Core', value: boardData.cpu_core || '—' },
-      { label: 'CPU Count', value: boardData.cpu_count ? `${boardData.cpu_count} cores` : '—' },
-      { label: 'CPU Frequency', value: boardData.cpu_freq_mhz ? `${boardData.cpu_freq_mhz} MHz` : '—' },
-      { label: 'RAM', value: boardData.ram_mb ? `${boardData.ram_mb} MB` : '—' },
-      { label: 'Power Rails', value: boardData.power_rails ? `${boardData.power_rails.length} rail(s)` : '—' },
-    ];
-    
-    details.innerHTML = fields.map(f => `
-      <div class="board-detail">
-        <div class="label">${f.label}</div>
-        <div class="value">${f.value}</div>
-      </div>`).join('');
-    
-    section.style.display = 'block';
-  }
 
   const TYPE_ICONS = {
     i2c:'🔗', spi:'⚡', uart:'📡', usart:'📡', gpio:'🔌', pwm:'🌀',
