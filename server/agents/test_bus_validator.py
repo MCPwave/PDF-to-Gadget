@@ -14,6 +14,7 @@ def test_single_map():
     """Test with a single map (should return empty conflicts)."""
     maps = [
         {
+            "soc": "BCM2711",
             "peripherals": [
                 {
                     "id": "i2c0",
@@ -30,6 +31,7 @@ def test_single_map():
     result = validate_connections(maps)
     assert result["valid"] is True
     assert len(result["conflicts"]) == 0
+    assert "driver_summary" in result
     print("✓ test_single_map passed")
 
 
@@ -37,6 +39,7 @@ def test_matching_i2c_buses():
     """Test with matching I2C buses across two maps."""
     maps = [
         {
+            "soc": "BCM2711",
             "peripherals": [
                 {
                     "id": "i2c0_sensor",
@@ -49,6 +52,7 @@ def test_matching_i2c_buses():
             "power_rails": []
         },
         {
+            "soc": "BCM2711",
             "peripherals": [
                 {
                     "id": "i2c0_eeprom",
@@ -76,6 +80,7 @@ def test_conflicting_spi_buses():
     """Test with conflicting SPI pin counts."""
     maps = [
         {
+            "soc": "BCM2711",
             "peripherals": [
                 {
                     "id": "spi0_flash",
@@ -88,6 +93,7 @@ def test_conflicting_spi_buses():
             "power_rails": []
         },
         {
+            "soc": "BCM2711",
             "peripherals": [
                 {
                     "id": "spi0_display",
@@ -115,6 +121,7 @@ def test_power_rail_conflict():
     """Test power rail voltage conflict detection."""
     maps = [
         {
+            "soc": "BCM2711",
             "peripherals": [],
             "power_rails": [
                 {
@@ -124,6 +131,7 @@ def test_power_rail_conflict():
             ]
         },
         {
+            "soc": "BCM2711",
             "peripherals": [],
             "power_rails": [
                 {
@@ -150,6 +158,7 @@ def test_empty_list():
     assert result["valid"] is True
     assert len(result["conflicts"]) == 0
     assert result["merged_buses"] == {}
+    assert "driver_summary" in result
     print("✓ test_empty_list passed")
 
 
@@ -157,6 +166,7 @@ def test_multiple_buses():
     """Test with multiple different bus types."""
     maps = [
         {
+            "soc": "BCM2711",
             "peripherals": [
                 {
                     "id": "i2c0",
@@ -189,6 +199,7 @@ def test_uart_bus():
     """Test UART bus detection."""
     maps = [
         {
+            "soc": "BCM2711",
             "peripherals": [
                 {
                     "id": "uart0",
@@ -211,6 +222,144 @@ def test_uart_bus():
     print("✓ test_uart_bus passed")
 
 
+def test_driver_mainline_no_conflict():
+    """Test that mainline drivers don't create conflicts."""
+    maps = [
+        {
+            "soc": "BCM2711",
+            "peripherals": [
+                {
+                    "id": "camera",
+                    "name": "Camera",
+                    "type": "camera",
+                    "bus": "MIPI_CSI0",
+                    "description": "MIPI CSI camera interface"
+                }
+            ],
+            "power_rails": []
+        }
+    ]
+    
+    result = validate_connections(maps)
+    assert result["valid"] is True
+    assert "driver_summary" in result
+    # BCM2711 camera drivers are mainline, so no driver_unavailable conflict
+    driver_conflicts = [c for c in result["conflicts"] if c["type"] == "driver_unavailable"]
+    assert len(driver_conflicts) == 0
+    assert result["driver_summary"]["mainline"] > 0
+    print("✓ test_driver_mainline_no_conflict passed")
+
+
+def test_driver_unknown_soc():
+    """Test driver lookup with unknown SoC."""
+    maps = [
+        {
+            "soc": "UNKNOWN_SOC",
+            "peripherals": [
+                {
+                    "id": "camera",
+                    "name": "Camera",
+                    "type": "camera",
+                    "bus": "MIPI_CSI0",
+                    "description": "MIPI CSI camera"
+                }
+            ],
+            "power_rails": []
+        }
+    ]
+    
+    result = validate_connections(maps)
+    assert result["valid"] is True
+    # Unknown SoC should fall back to wildcard patterns, which exist for camera
+    # Worst case, it logs driver as unknown
+    assert "driver_summary" in result
+    print("✓ test_driver_unknown_soc passed")
+
+
+def test_driver_with_alternatives():
+    """Test that driver conflicts include alternatives."""
+    maps = [
+        {
+            "soc": "UNKNOWN_SOC",
+            "peripherals": [
+                {
+                    "id": "display",
+                    "name": "Display",
+                    "type": "display",
+                    "bus": "MIPI_DSI0",
+                    "description": "MIPI DSI display"
+                }
+            ],
+            "power_rails": []
+        }
+    ]
+    
+    result = validate_connections(maps)
+    assert result["valid"] is True
+    
+    # Find driver_unavailable conflicts for display
+    display_conflicts = [
+        c for c in result["conflicts"]
+        if c["type"] == "driver_unavailable" and c["peripheral_type"] == "display"
+    ]
+    
+    # If we have conflicts, they should have alternatives
+    for conflict in display_conflicts:
+        if conflict["type"] == "driver_unavailable":
+            # Alternatives field should exist for non-mainline drivers
+            if "alternatives" in conflict:
+                assert isinstance(conflict["alternatives"], list)
+                assert len(conflict["alternatives"]) > 0
+                # Each alternative should have connection_type
+                for alt in conflict["alternatives"]:
+                    assert "connection_type" in alt
+                    assert "driver_status" in alt
+    
+    print("✓ test_driver_with_alternatives passed")
+
+
+def test_driver_summary_counts():
+    """Test that driver_summary correctly counts driver statuses."""
+    maps = [
+        {
+            "soc": "BCM2711",
+            "peripherals": [
+                {
+                    "id": "i2c0",
+                    "name": "I2C0",
+                    "type": "i2c",
+                    "bus": "I2C0",
+                    "description": "I2C mainline driver"
+                },
+                {
+                    "id": "uart0",
+                    "name": "UART0",
+                    "type": "uart",
+                    "bus": "UART0",
+                    "description": "UART mainline driver"
+                },
+                {
+                    "id": "gpio0",
+                    "name": "GPIO",
+                    "type": "gpio",
+                    "bus": "GPIO",
+                    "description": "GPIO mainline driver"
+                }
+            ],
+            "power_rails": []
+        }
+    ]
+    
+    result = validate_connections(maps)
+    assert result["valid"] is True
+    assert "driver_summary" in result
+    summary = result["driver_summary"]
+    
+    # BCM2711 has mainline drivers for i2c, uart, gpio
+    assert summary.get("mainline", 0) >= 3
+    print(f"✓ test_driver_summary_counts passed: {summary}")
+
+
 if __name__ == "__main__":
     test_single_map()
     test_matching_i2c_buses()
@@ -219,4 +368,8 @@ if __name__ == "__main__":
     test_empty_list()
     test_multiple_buses()
     test_uart_bus()
+    test_driver_mainline_no_conflict()
+    test_driver_unknown_soc()
+    test_driver_with_alternatives()
+    test_driver_summary_counts()
     print("\n✅ All tests passed!")

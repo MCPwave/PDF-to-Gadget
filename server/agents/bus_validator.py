@@ -1,10 +1,13 @@
 """
 Bus Validator — Connection validation for multi-PDF component merging.
-Validates I2C/SPI/UART bus consistency and power rail compatibility across maps.
+Validates I2C/SPI/UART bus consistency, power rail compatibility, and driver availability.
 Returns warnings but does not halt processing.
 """
 import re
-from typing import List
+from typing import List, Optional, Dict, Any
+
+from kernel_scout import _lookup_db
+from alternative_connections import get_alternatives
 
 
 # ─── Common bus pin patterns ────────────────────────────────────────────────
@@ -115,31 +118,113 @@ def _get_pins_for_bus_type(bus_type: str) -> List[str]:
     return sorted(list(expected_pins))
 
 
-def validate_connections(maps_list: List[dict]) -> dict:
+def _get_driver_alternatives(
+    peripheral_type: str,
+    driver_status: str,
+    soc: str,
+) -> List[Dict[str, Any]]:
     """
-    Validate bus connections and power rail compatibility across multiple hardware maps.
+    Get alternative connection types and their driver statuses.
+    
+    Args:
+        peripheral_type: Type of peripheral (e.g., "camera", "display")
+        driver_status: Current driver status (mainline/backport/vendor/unknown)
+        soc: SoC name for lookups
+    
+    Returns:
+        List of alternative connection dicts with driver info
+    """
+    if driver_status == "mainline":
+        return []  # No alternatives needed if driver is mainline
+    
+    alternatives_list = get_alternatives(peripheral_type)
+    if not alternatives_list:
+        return []
+    
+    result = []
+    for alt_connection_type in alternatives_list:
+        # Look up driver status for this alternative connection type
+        alt_driver_info = _lookup_db(soc, alt_connection_type)
+        
+        if alt_driver_info:
+            alt_status = alt_driver_info.get("status", "unknown")
+        else:
+            alt_status = "unknown"
+        
+        result.append({
+            "connection_type": alt_connection_type,
+            "driver_status": alt_status,
+            "effort": "medium" if alt_status == "unknown" else "low" if alt_status == "mainline" else "high"
+        })
+    
+    return result
+
+
+def _lookup_driver_with_fallback(soc: str, peripheral_type: str) -> Optional[dict]:
+    """
+    Look up driver for a peripheral type, with fallback to alternative types.
+    
+    For generic types like "display", tries specific types like "hdmi", "displayport".
+    """
+    # Try the exact type first
+    driver_info = _lookup_db(soc, peripheral_type)
+    if driver_info:
+        return driver_info
+    
+    # Try alternatives (generic fallback)
+    alternatives = get_alternatives(peripheral_type)
+    for alt_type in alternatives:
+        alt_info = _lookup_db(soc, alt_type)
+        if alt_info:
+            return alt_info
+    
+    return None
+
+
+def validate_connections(
+    maps_list: List[dict],
+    soc: Optional[str] = None,
+) -> dict:
+    """
+    Validate bus connections, power rail compatibility, and driver availability.
     
     Args:
         maps_list: List of hardware_map dicts, each containing:
                    - peripherals: list of {id, name, type, bus, voltage, ...}
                    - power_rails: list of {name, voltage, ...}
+                   - soc: (optional) SoC name for driver lookup
+        soc: (optional) SoC name. If not provided, will try to extract from first map.
     
     Returns:
         {
           "valid": True,  # always true (warn but continue mode)
           "conflicts": [
             {
-              "type": "bus_pin_mismatch" | "power_rail_mismatch",
+              "type": "bus_pin_mismatch" | "power_rail_mismatch" | "driver_unavailable",
               "bus_name": "I2C0" | rail name,
+              "peripheral_type": "camera" (for driver conflicts),
               "map_a_pins": [...],
               "map_b_pins": [...],
               "severity": "warning",
-              "message": "..."
+              "message": "...",
+              "alternatives": [  # NEW: for driver conflicts
+                {
+                  "connection_type": "usb",
+                  "driver_status": "mainline",
+                  "effort": "low"
+                }
+              ]
             }
           ],
           "merged_buses": {
             "I2C0": ["SDA", "SCL"],
             "SPI0": ["MOSI", "MISO", "CLK", "CS"]
+          },
+          "driver_summary": {  # NEW
+            "mainline": 5,
+            "backport": 2,
+            "vendor": 1,
+            "unknown": 1
           }
         }
     """
@@ -148,11 +233,23 @@ def validate_connections(maps_list: List[dict]) -> dict:
         return {
             "valid": True,
             "conflicts": [],
-            "merged_buses": {}
+            "merged_buses": {},
+            "driver_summary": {}
         }
     
     conflicts = []
     merged_buses = {}
+    driver_summary: Dict[str, int] = {
+        "mainline": 0,
+        "backport": 0,
+        "vendor": 0,
+        "unknown": 0,
+        "wip": 0
+    }
+    
+    # Extract SoC from first map if not provided
+    if soc is None and maps_list:
+        soc = maps_list[0].get("soc", "")
     
     # ─── Bus pin validation ────────────────────────────────────────────────
     
@@ -254,8 +351,68 @@ def validate_connections(maps_list: List[dict]) -> dict:
                         )
                     })
     
+    # ─── Driver availability validation ────────────────────────────────────
+    
+    for map_idx, hw_map in enumerate(maps_list):
+        peripherals = hw_map.get("peripherals", [])
+        
+        for peripheral in peripherals:
+            if not isinstance(peripheral, dict):
+                continue
+            
+            peripheral_type = peripheral.get("type", "").lower()
+            if not peripheral_type:
+                continue
+            
+            # Look up driver for this peripheral type on this SoC (with fallback to alternatives)
+            driver_info = _lookup_driver_with_fallback(soc or "", peripheral_type)
+            
+            if driver_info is None:
+                driver_status = "unknown"
+            else:
+                driver_status = driver_info.get("status", "unknown")
+            
+            # Update summary
+            if driver_status not in driver_summary:
+                driver_summary[driver_status] = 0
+            driver_summary[driver_status] += 1
+            
+            # Log conflict if driver is not mainline
+            if driver_status != "mainline":
+                bus_name = peripheral.get("bus", "unknown")
+                driver_module = (
+                    driver_info.get("module", "unknown")
+                    if driver_info else "unknown"
+                )
+                
+                # Get alternatives for this peripheral type
+                alternatives = _get_driver_alternatives(
+                    peripheral_type,
+                    driver_status,
+                    soc or ""
+                )
+                
+                conflict_entry = {
+                    "type": "driver_unavailable",
+                    "bus_name": bus_name,
+                    "peripheral_type": peripheral_type,
+                    "map_a_pins": [driver_module],
+                    "map_b_pins": [driver_status],
+                    "severity": "warning",
+                    "message": (
+                        f"{peripheral_type.capitalize()} via {bus_name} "
+                        f"has driver status: {driver_status}"
+                    )
+                }
+                
+                if alternatives:
+                    conflict_entry["alternatives"] = alternatives
+                
+                conflicts.append(conflict_entry)
+    
     return {
         "valid": True,  # Always true: warn but don't halt
         "conflicts": conflicts,
-        "merged_buses": merged_buses
+        "merged_buses": merged_buses,
+        "driver_summary": driver_summary
     }
