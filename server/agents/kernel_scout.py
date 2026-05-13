@@ -233,6 +233,14 @@ _COMPONENT_DRIVER_DB: list[tuple[str, str, str, dict]] = [
         "maintainer": "Jacopo Mondi <jacopo@jmondi.org>",
         "status": "mainline",
     }),
+    ("camera_sensor", "ar2020", "mipi_csi", {
+        "module": "ar2020",
+        "since": "v5.15",
+        "kconfig": "CONFIG_VIDEO_AR2020",
+        "path": "drivers/media/i2c/ar2020.c",
+        "maintainer": "onsemi",
+        "status": "vendor",
+    }),
 
     # ── Display Controllers ──────────────────────────────────────────────────
     ("display", "ili9341", "spi", {
