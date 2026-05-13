@@ -5,6 +5,7 @@ Orchestrates @librarian → component selection → @dt_architect + @snap_engine
 import asyncio
 import io
 import json
+import logging
 import os
 import re
 import sys
@@ -23,6 +24,10 @@ from pydantic import BaseModel
 # add parent dir so we can import agents
 sys.path.insert(0, str(Path(__file__).parent))
 from agents import librarian, dt_architect, snap_engineer, kernel_scout, raci_builder, bus_validator
+
+# Suppress fontTools FontBBox warnings (cosmetic, doesn't affect extraction)
+logging.getLogger("fontTools").setLevel(logging.ERROR)
+logging.getLogger("pdfplumber").setLevel(logging.WARNING)  # Keep other pdfplumber warnings
 
 # ── App setup ──────────────────────────────────────────────────────────────────
 

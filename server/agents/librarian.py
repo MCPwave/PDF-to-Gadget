@@ -26,6 +26,21 @@ _PERIPHERAL_TYPES = (
     "rgb|parallel_lcd|touch|nand|nor_flash|hyperflash|other"
 )
 
+# ── Component connection types and validation ──────────────────────────────────
+_VALID_CONNECTION_TYPES = {
+    "mipi_csi", "mipi_dsi", "i2c", "spi", "usb", "uart", "gpio",
+    "hdmi", "displayport", "lvds", "pcie", "sata", "eth", "can",
+    "i2s", "audio", "usart", "qspi", "touchscreen_i2c", "touchscreen_spi"
+}
+
+_COMPONENT_IC_TYPES = {
+    "camera_sensor", "display", "touchscreen", "audio_codec", "amplifier",
+    "accelerometer", "gyroscope", "magnetometer", "temperature_sensor",
+    "humidity_sensor", "pressure_sensor", "proximity_sensor", "light_sensor",
+    "motion_sensor", "humidity_sensor", "compass", "gps", "modem", "nfc",
+    "bluetooth", "wifi", "microphone", "speaker", "regulator", "pmic"
+}
+
 # ── Section type classifier ────────────────────────────────────────────────────
 
 _SECTION_SIGNALS: dict[str, list[str]] = {
@@ -165,7 +180,74 @@ def _strip_fences(raw: str) -> str:
     return raw.strip()
 
 
-def _merge_hw_maps(base: dict, extra: dict) -> dict:
+# ── Component validation ───────────────────────────────────────────────────────
+
+def _validate_component(peripheral: dict, board_buses: set) -> tuple[bool, list[str]]:
+    """
+    Validate a component peripheral entry.
+    Returns (is_valid, errors) tuple.
+    """
+    errors = []
+    
+    if not peripheral.get("is_component"):
+        return True, []
+    
+    # Components must have connection_type
+    conn_type = peripheral.get("connection_type", "").strip()
+    if not conn_type:
+        errors.append(f"Component {peripheral.get('id', '?')}: missing connection_type")
+    elif conn_type not in _VALID_CONNECTION_TYPES:
+        errors.append(
+            f"Component {peripheral.get('id', '?')}: unknown connection_type '{conn_type}' "
+            f"(valid: {', '.join(sorted(_VALID_CONNECTION_TYPES))})"
+        )
+    
+    # Components must have connector info
+    connector = peripheral.get("connector", {})
+    if not connector:
+        errors.append(f"Component {peripheral.get('id', '?')}: missing connector info")
+    else:
+        if "voltage" not in connector:
+            errors.append(f"Component {peripheral.get('id', '?')}: connector missing voltage")
+        
+        required_iface = connector.get("required_board_interface", "").strip()
+        if required_iface and required_iface not in board_buses:
+            errors.append(
+                f"Component {peripheral.get('id', '?')}: required board interface '{required_iface}' "
+                f"not found on board (available: {', '.join(sorted(board_buses))})"
+            )
+    
+    # Components should have component_ic info
+    component_ic = peripheral.get("component_ic", {})
+    if not component_ic:
+        errors.append(f"Component {peripheral.get('id', '?')}: missing component_ic info")
+    else:
+        ic_type = component_ic.get("type", "").strip()
+        if ic_type and ic_type not in _COMPONENT_IC_TYPES:
+            errors.append(
+                f"Component {peripheral.get('id', '?')}: unknown IC type '{ic_type}' "
+                f"(valid: {', '.join(sorted(_COMPONENT_IC_TYPES))})"
+            )
+    
+    return len(errors) == 0, errors
+
+
+def _separate_components(peripherals: list[dict]) -> tuple[list[dict], list[dict]]:
+    """
+    Separate board peripherals from components.
+    Returns (board_peripherals, components).
+    """
+    board_perips = []
+    components = []
+    
+    for p in peripherals:
+        if isinstance(p, dict) and p.get("is_component", False):
+            components.append(p)
+        else:
+            board_perips.append(p)
+    
+    return board_perips, components
+
     """Merge two hw_maps: prefer non-null scalars from extra, union peripherals/rails."""
     result = dict(base)
     for key in ("board", "soc", "arch", "cpu_core", "cpu_count", "cpu_freq_mhz", "ram_mb"):
@@ -283,11 +365,20 @@ def merge_hardware_maps(maps_list: list[dict]) -> dict:
                 if "source_pdf" not in p:
                     p["source_pdf"] = f"pdf_{pdf_id}"
     
-    # Deduplicate peripherals by (bus, type) pair
-    seen_buses = {}  # (bus_name, type) -> peripheral entry
+    # Separate components from board peripherals before deduplication
+    board_peripherals_list = []
+    components_list = []
     
     for pdf_id, hw_map in valid_maps:
-        for p in hw_map.get("peripherals", []):
+        board_perips, components = _separate_components(hw_map.get("peripherals", []))
+        board_peripherals_list.append((pdf_id, board_perips))
+        components_list.append((pdf_id, components))
+    
+    # Deduplicate board peripherals by (bus, type) pair
+    seen_buses = {}  # (bus_name, type) -> peripheral entry
+    
+    for pdf_id, peripherals in board_peripherals_list:
+        for p in peripherals:
             if not isinstance(p, dict):
                 continue
             bus_name = p.get("bus", "").strip()
@@ -334,6 +425,23 @@ def merge_hardware_maps(maps_list: list[dict]) -> dict:
                 if not existing.get("regulator") and p.get("regulator"):
                     existing["regulator"] = p["regulator"]
     
+    # Add deduplicated board peripherals (if not already added above)
+    # and merge components
+    seen_component_ids = set()
+    for pdf_id, components in components_list:
+        for comp in components:
+            if not isinstance(comp, dict):
+                continue
+            comp_id = comp.get("id", "")
+            if comp_id and comp_id not in seen_component_ids:
+                result["peripherals"].append(comp)
+                seen_component_ids.add(comp_id)
+            elif comp_id in seen_component_ids:
+                # Duplicate component - merge connector info if necessary
+                warnings.append(
+                    f"Component {comp_id} appears in multiple PDFs, using first occurrence"
+                )
+    
     # Deduplicate power rails by name, merge supplies lists
     seen_rails = {}
     for pdf_id, hw_map in valid_maps:
@@ -377,7 +485,11 @@ def merge_hardware_maps(maps_list: list[dict]) -> dict:
     # Validate: each peripheral's regulator must exist in power_rails
     rail_names = {r.get("name", "") for r in result.get("power_rails", []) if r.get("name")}
     for p in result.get("peripherals", []):
-        regulator = p.get("regulator", "").strip()
+        regulator = p.get("regulator", "")
+        if isinstance(regulator, str):
+            regulator = regulator.strip()
+        else:
+            regulator = ""
         if regulator and regulator not in rail_names:
             warnings.append(
                 f"Peripheral {p.get('id', '?')} references unknown regulator '{regulator}'"
@@ -804,6 +916,153 @@ _BOARD_PATTERNS = [
 _REG_PATTERN = re.compile(r"(vcc[-_]\w+|vdd[-_]\w+|vmmc[-_]\w*|v\d+p\d+)", re.I)
 _VOLTAGE_PATTERN = re.compile(r"(\d+(?:\.\d+)?)\s*V\b", re.I)
 
+# ── PDF type classification ────────────────────────────────────────────────────
+
+_PIN_PATTERNS = {
+    "mipi_csi": re.compile(r"CSI[-_]?D[0-3]|CSI[-_]?(?:CLK|HS[PC]|VS)", re.I),
+    "i2c":      re.compile(r"\b(?:SDA|SCL|INT|ALERT)\b", re.I),
+    "spi":      re.compile(r"\b(?:MOSI|MISO|CLK|CS|SCLK|SDI|SDO)\b", re.I),
+    "usb":      re.compile(r"\b(?:DP|DM|VBUS|D[\+\-])\b", re.I),
+    "uart":     re.compile(r"\b(?:TX|RX|TXD|RXD|RTS|CTS)\b", re.I),
+}
+
+
+def classify_pdf_type(hardware_map: dict) -> str:
+    """
+    Classify PDF as 'board' (contains SoC) or 'component' (no SoC).
+    
+    Args:
+        hardware_map: Extracted hardware map dict
+        
+    Returns:
+        'board' if SoC detected, 'component' otherwise
+    """
+    soc = hardware_map.get("soc", "").strip().lower()
+    if soc and soc not in ("unknown", "unknown soc", ""):
+        return "board"
+    return "component"
+
+
+def _detect_connection_type_from_pins(pin_names: list[str]) -> str:
+    """
+    Infer connection type from pin names.
+    
+    Args:
+        pin_names: List of pin signal names (e.g., ['CSI_D0', 'CSI_CLK', 'GND'])
+        
+    Returns:
+        Connection type string or 'generic'
+    """
+    pins_str = " ".join(pin_names).upper()
+    scores = {}
+    
+    for conn_type, pattern in _PIN_PATTERNS.items():
+        matches = len(pattern.findall(pins_str))
+        if matches > 0:
+            scores[conn_type] = matches
+    
+    if scores:
+        return max(scores, key=scores.get)
+    return "generic"
+
+
+def _extract_connector_pins(peripheral: dict) -> list[str]:
+    """
+    Extract connector pin names from peripheral description.
+    Falls back to bus label if no pins found in description.
+    
+    Args:
+        peripheral: Peripheral dict with id, name, description, bus
+        
+    Returns:
+        List of pin signal names
+    """
+    # Look for pin names in description
+    desc = peripheral.get("description", "").upper()
+    
+    # Match common pin patterns
+    pin_pattern = re.compile(r"\b([A-Z][A-Z0-9]*[-_]?(?:D|CLK|CS|HS[PC]|VS|INT|ALERT|TX|RX|MOSI|MISO|DP|DM|SDA|SCL|VCC|GND))\b")
+    pins = pin_pattern.findall(desc)
+    
+    if pins:
+        return list(set(pins))  # unique pins
+    
+    # Fallback: generate from bus label
+    bus = peripheral.get("bus", "").upper()
+    if bus:
+        return [f"{bus}_PIN"]
+    
+    return []
+
+
+def enrich_component_peripheral(peripheral: dict) -> dict:
+    """
+    Enrich peripheral dict for component (non-board) PDFs.
+    Adds component-specific fields and removes board-specific ones.
+    
+    Args:
+        peripheral: Peripheral dict
+        
+    Returns:
+        Enhanced peripheral dict with component fields
+    """
+    enhanced = dict(peripheral)
+    
+    # Detect connection type from available pin info
+    pins = _extract_connector_pins(peripheral)
+    conn_type = _detect_connection_type_from_pins(pins)
+    
+    # Add component-specific fields
+    enhanced["is_component"] = True
+    enhanced["connection_type"] = conn_type
+    enhanced["connector_pins"] = pins
+    
+    # Extract voltage from description or rail
+    voltage = peripheral.get("voltage", "3.3V")
+    enhanced["voltage"] = voltage
+    
+    # Remove internal bus/register info (components don't have these)
+    enhanced.pop("address", None)
+    enhanced.pop("irq", None)
+    
+    # Simplify description for components
+    if conn_type != "generic":
+        enhanced["description"] = f"{conn_type.upper()} connector: {', '.join(pins[:4])}"
+    
+    return enhanced
+
+
+def enrich_hardware_map_for_type(hardware_map: dict, pdf_type: str = None) -> dict:
+    """
+    Enrich hardware_map based on detected PDF type.
+    
+    For components (no SoC), enriches peripherals with connection info.
+    For boards, leaves peripherals as-is.
+    
+    Args:
+        hardware_map: Extracted hardware map dict
+        pdf_type: Optional pre-classified type ('board' or 'component').
+                 If None, will auto-detect.
+    
+    Returns:
+        Enriched hardware_map dict
+    """
+    if pdf_type is None:
+        pdf_type = classify_pdf_type(hardware_map)
+    
+    enhanced = dict(hardware_map)
+    enhanced["pdf_type"] = pdf_type
+    
+    if pdf_type == "component":
+        # Enrich all peripherals with component-specific fields
+        enriched_peripherals = []
+        for peripheral in hardware_map.get("peripherals", []):
+            enriched = enrich_component_peripheral(peripheral)
+            enriched_peripherals.append(enriched)
+        enhanced["peripherals"] = enriched_peripherals
+    
+    return enhanced
+
 
 # ── Section-by-section LLM runner ─────────────────────────────────────────────
 
@@ -954,7 +1213,8 @@ def _normalise_hw_map(hw: dict) -> dict:
     hw.setdefault("peripherals",  [])
     hw.setdefault("power_rails",  [])
     p_defaults = {"id": "", "name": "", "type": "other", "bus": "", "address": "",
-                  "irq": None, "description": "", "voltage": "3.3V", "regulator": "vcc-3v3"}
+                  "irq": None, "description": "", "voltage": "3.3V", "regulator": "vcc-3v3",
+                  "is_component": False, "connection_type": "", "source_pdf": ""}
     clean: list[dict] = []
     for p in hw["peripherals"]:
         if not isinstance(p, dict):
