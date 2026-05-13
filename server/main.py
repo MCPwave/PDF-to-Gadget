@@ -23,7 +23,7 @@ from pydantic import BaseModel
 
 # add parent dir so we can import agents
 sys.path.insert(0, str(Path(__file__).parent))
-from agents import librarian, dt_architect, snap_engineer, kernel_scout, raci_builder, bus_validator
+from agents import librarian, dt_architect, snap_engineer, kernel_scout, raci_builder, bus_validator, component_validator
 
 # Suppress fontTools FontBBox warnings (cosmetic, doesn't affect extraction)
 logging.getLogger("fontTools").setLevel(logging.ERROR)
@@ -248,8 +248,36 @@ async def _upload_stream(
             yield _event(f"  {entry}", "log")
             await asyncio.sleep(0)
         
+        # Extract and stream discovered components
+        components_found = [
+            p for p in hw_map.get("peripherals", [])
+            if p.get("is_component", False)
+        ]
+        if components_found:
+            for comp in components_found:
+                comp_id = comp.get("id", "unknown")
+                comp_name = comp.get("name", "Unknown Component")
+                comp_type = comp.get("type", "unknown")
+                ic_name = comp.get("component_ic", {}).get("name", "unknown")
+                conn_type = comp.get("connection_type", "unknown")
+                
+                component_event = {
+                    "type": "component_found",
+                    "component_id": comp_id,
+                    "component_name": comp_name,
+                    "component_type": comp_type,
+                    "ic_name": ic_name,
+                    "connection_type": conn_type,
+                    "source_pdf": filename
+                }
+                yield f"data: {json.dumps(component_event)}\n\n"
+                await asyncio.sleep(0.1)
+        
         all_maps.append(hw_map)
-        yield _event(f"  ✅ Hardware map extracted: {len(hw_map.get('peripherals', []))} peripherals", "log")
+        total_peripherals = len(hw_map.get('peripherals', []))
+        total_components = len(components_found)
+        peripherals_summary = f"{total_peripherals} peripherals ({total_components} components)" if total_components > 0 else f"{total_peripherals} peripherals"
+        yield _event(f"  ✅ Hardware map extracted: {peripherals_summary}", "log")
         await asyncio.sleep(0.2)
     
     # Summary of extraction
@@ -286,6 +314,9 @@ async def _upload_stream(
     }
     
     # Final upload_done event with merged map
+    # Count components in merged map
+    components = [p for p in merged_map.get("peripherals", []) if p.get("is_component", False)]
+    
     payload = {
         "type":        "upload_done",
         "session_id":  session_id,
@@ -301,6 +332,7 @@ async def _upload_stream(
         "power_rails": merged_map.get("power_rails", []),
         "files_processed": len(all_maps),
         "files_failed": len(failed_files),
+        "components_found": len(components),
     }
     yield f"data: {json.dumps(payload)}\n\n"
 
@@ -432,6 +464,58 @@ async def _pipeline_stream(session_id: str, selected_ids: list[str], alternative
         )
     
     await asyncio.sleep(0.2)
+
+    # ── Component validation ────────────────────────────────────────────────────
+    components = [p for p in hw_map.get("peripherals", []) if p.get("is_component", False)]
+    if components:
+        yield event("🔌 @component_validator — validating component connections…", "log")
+        await asyncio.sleep(0.3)
+        
+        try:
+            component_validation = await asyncio.get_event_loop().run_in_executor(
+                None, component_validator.validate_component_connections, hw_map, components
+            )
+        except Exception as e:
+            yield event(f"⚠️  Component validation failed: {e}", "log")
+            component_validation = {"valid": True, "component_status": [], "summary": {}}
+        
+        # Stream component conflict events
+        component_status = component_validation.get("component_status", [])
+        comp_summary = component_validation.get("summary", {})
+        
+        if component_status:
+            for comp_result in component_status:
+                status = comp_result.get("status", "OK")
+                if status != "OK":
+                    comp_id = comp_result.get("component_id", "unknown")
+                    comp_name = comp_result.get("component_name", "Unknown")
+                    message = comp_result.get("message", "")
+                    required_iface = comp_result.get("required_interface", "unknown")
+                    
+                    alternatives = comp_result.get("alternatives", [])
+                    alt_msg = ""
+                    if alternatives:
+                        alt_options = [f"{a.get('connection_type', 'unknown')} ({a.get('driver_status', 'unknown')})" 
+                                      for a in alternatives[:2]]
+                        alt_msg = f" | Alternatives: {', '.join(alt_options)}"
+                    
+                    yield event(
+                        f"⚠️  Component {comp_name} ({comp_id}) — {message}{alt_msg}",
+                        "conflict"
+                    )
+                    await asyncio.sleep(0.1)
+        
+        # Summary of component validation
+        comp_ok = comp_summary.get("ok", 0)
+        comp_warnings = comp_summary.get("warnings", 0)
+        comp_total = comp_summary.get("total_components", 0)
+        if comp_total > 0:
+            yield event(
+                f"✅ Components validated: {comp_ok}/{comp_total} OK, {comp_warnings} warnings",
+                "log"
+            )
+        
+        await asyncio.sleep(0.2)
 
     # ── Pinmux conflict check ──────────────────────────────────────────────────
     selected_peripherals = [p for p in hw_map["peripherals"] if p["id"] in selected_ids]
