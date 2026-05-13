@@ -1515,6 +1515,44 @@ def _run_sections_internal(sections, model_override, api_key):
                     log.append(f"       ↳ heuristic: {n} peripherals")
             except Exception as e:
                 log.append(f"       ↳ heuristic error: {e}")
+            
+            # Extract components even when using heuristic
+            try:
+                components = extract_components_from_pdf(text)
+                if components:
+                    if not merged:
+                        merged = {
+                            "board": None,
+                            "soc": None,
+                            "arch": None,
+                            "cpu_core": None,
+                            "cpu_count": None,
+                            "cpu_freq_mhz": None,
+                            "ram_mb": None,
+                            "peripherals": [],
+                            "power_rails": []
+                        }
+                    
+                    if "peripherals" not in merged:
+                        merged["peripherals"] = []
+                    
+                    existing_component_ics = {
+                        p.get("component_ic", {}).get("name", "").lower()
+                        for p in merged.get("peripherals", [])
+                        if p.get("is_component")
+                    }
+                    
+                    for comp in components:
+                        ic_name = comp.get("component_ic", {}).get("name", "").lower()
+                        if ic_name and ic_name not in existing_component_ics:
+                            merged["peripherals"].append(comp)
+                            existing_component_ics.add(ic_name)
+                    
+                    n_comps = len([c for c in merged.get("peripherals", []) if c.get("is_component")])
+                    if n_comps > len([p for p in hw.get("peripherals", []) if p.get("is_component")]):
+                        log.append(f"       ↳ components: {len(components)} detected")
+            except Exception as e:
+                pass
             continue
 
         # pick appropriate prompt
@@ -1568,7 +1606,7 @@ def _run_sections_internal(sections, model_override, api_key):
             except Exception:
                 pass
         
-        # Extract components from each section
+        # Extract components from each section (LLM path)
         try:
             components = extract_components_from_pdf(text)
             if components:
