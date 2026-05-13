@@ -226,7 +226,8 @@ def _validate_component(peripheral: dict, board_buses: set) -> tuple[bool, list[
         if "voltage" not in connector:
             errors.append(f"Component {peripheral.get('id', '?')}: connector missing voltage")
         
-        required_iface = connector.get("required_board_interface", "").strip()
+        required_iface = connector.get("required_board_interface") or ""
+        required_iface = required_iface.strip() if required_iface else ""
         if required_iface and required_iface not in board_buses:
             errors.append(
                 f"Component {peripheral.get('id', '?')}: required board interface '{required_iface}' "
