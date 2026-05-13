@@ -1,0 +1,3 @@
+peripheral,type,driver_module,kernel_since,kconfig,source_path,status,effort,UC22,UC24,UC26,R,A,C,I
+USB Controller,usb,xhci-hcd,v2.6.31,USB_XHCI_HCD,drivers/usb/host/xhci.c,mainline,low,native,native,native,BSP Engineer,HW Architect,Upstream Team,PM / Integration
+ETHERNET Controller,ethernet,stmmac,v3.10,STMMAC_ETH,drivers/net/ethernet/stmicro/stmmac/,mainline,low,native,native,native,BSP Engineer,HW Architect,Upstream Team,PM / Integration

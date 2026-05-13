@@ -122,17 +122,25 @@
   }
   .model-select-wrap label { font-size: 11px; color: rgba(255,255,255,.55); white-space: nowrap; }
   #model-select {
-    background: rgba(255,255,255,.08);
-    border: 1px solid rgba(255,255,255,.2);
+    background: #3D0030;
+    border: 1px solid rgba(233,84,32,.6);
     border-radius: 2px;
     color: #fff;
     font-family: "Ubuntu", sans-serif;
     font-size: 12px;
-    padding: 3px 8px;
+    padding: 4px 8px;
     cursor: pointer;
-    max-width: 220px;
+    max-width: 240px;
   }
   #model-select:focus { outline: none; border-color: var(--canonical-orange); }
+  #model-select option,
+  #model-select optgroup {
+    background: #2C001E;
+    color: #F7F7F7;
+    font-family: "Ubuntu", sans-serif;
+    font-size: 12px;
+  }
+  #model-select optgroup { color: #E95420; font-weight: 700; }
   .model-status {
     font-size: 10px;
     padding: 2px 7px;

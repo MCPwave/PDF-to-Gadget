@@ -1,0 +1,338 @@
+{
+  "board": "VAR-MX7",
+  "soc": "Unknown SoC",
+  "arch": "arm64",
+  "cpu_core": "Unknown",
+  "peripherals": [
+    {
+      "id": "spi_2",
+      "name": "SPI2 Controller",
+      "type": "spi",
+      "bus": "SPI2",
+      "address": "",
+      "description": "SPI peripheral on SPI2",
+      "voltage": "3.3V",
+      "regulator": "vcc-spi",
+      "irq": null
+    },
+    {
+      "id": "uart_2",
+      "name": "UART2 Controller",
+      "type": "uart",
+      "bus": "UART2",
+      "address": "",
+      "description": "UART peripheral on UART2",
+      "voltage": "3.3V",
+      "regulator": "vcc-uart",
+      "irq": null
+    },
+    {
+      "id": "uart_3",
+      "name": "UART3 Controller",
+      "type": "uart",
+      "bus": "UART3",
+      "address": "",
+      "description": "UART peripheral on UART3",
+      "voltage": "3.3V",
+      "regulator": "vcc-uart",
+      "irq": null
+    },
+    {
+      "id": "uart_1",
+      "name": "UART1 Controller",
+      "type": "uart",
+      "bus": "UART1",
+      "address": "",
+      "description": "UART peripheral on UART1",
+      "voltage": "3.3V",
+      "regulator": "vcc-uart",
+      "irq": null
+    },
+    {
+      "id": "gpio_2",
+      "name": "GPIO2 Controller",
+      "type": "gpio",
+      "bus": "GPIO2",
+      "address": "",
+      "description": "GPIO peripheral on GPIO2",
+      "voltage": "3.3V",
+      "regulator": "vcc-gpio",
+      "irq": null
+    },
+    {
+      "id": "gpio_1",
+      "name": "GPIO1 Controller",
+      "type": "gpio",
+      "bus": "GPIO1",
+      "address": "",
+      "description": "GPIO peripheral on GPIO1",
+      "voltage": "3.3V",
+      "regulator": "vcc-gpio",
+      "irq": null
+    },
+    {
+      "id": "gpio_7",
+      "name": "GPIO7 Controller",
+      "type": "gpio",
+      "bus": "GPIO7",
+      "address": "",
+      "description": "GPIO peripheral on GPIO7",
+      "voltage": "3.3V",
+      "regulator": "vcc-gpio",
+      "irq": null
+    },
+    {
+      "id": "pwm_2",
+      "name": "PWM2 Controller",
+      "type": "pwm",
+      "bus": "PWM2",
+      "address": "",
+      "description": "PWM peripheral on PWM2",
+      "voltage": "3.3V",
+      "regulator": "vcc-pwm",
+      "irq": null
+    },
+    {
+      "id": "usb_9",
+      "name": "USB Controller",
+      "type": "usb",
+      "bus": "USB",
+      "address": "",
+      "description": "USB peripheral on USB",
+      "voltage": "3.3V",
+      "regulator": "vcc-usb",
+      "irq": null
+    },
+    {
+      "id": "usb_2",
+      "name": "USB2 Controller",
+      "type": "usb",
+      "bus": "USB2",
+      "address": "",
+      "description": "USB peripheral on USB2",
+      "voltage": "3.3V",
+      "regulator": "vcc-usb",
+      "irq": null
+    },
+    {
+      "id": "ethernet_11",
+      "name": "ETHERNET Controller",
+      "type": "ethernet",
+      "bus": "ETHERNET",
+      "address": "",
+      "description": "ETHERNET peripheral on ETHERNET",
+      "voltage": "3.3V",
+      "regulator": "vcc-ethernet",
+      "irq": null
+    },
+    {
+      "id": "ethernet_1",
+      "name": "ETHERNET1 Controller",
+      "type": "ethernet",
+      "bus": "ETHERNET1",
+      "address": "",
+      "description": "ETHERNET peripheral on ETHERNET1",
+      "voltage": "3.3V",
+      "regulator": "vcc-ethernet",
+      "irq": null
+    },
+    {
+      "id": "ethernet_2",
+      "name": "ETHERNET2 Controller",
+      "type": "ethernet",
+      "bus": "ETHERNET2",
+      "address": "",
+      "description": "ETHERNET peripheral on ETHERNET2",
+      "voltage": "3.3V",
+      "regulator": "vcc-ethernet",
+      "irq": null
+    },
+    {
+      "id": "can_2",
+      "name": "CAN2 Controller",
+      "type": "can",
+      "bus": "CAN2",
+      "address": "",
+      "description": "CAN peripheral on CAN2",
+      "voltage": "3.3V",
+      "regulator": "vcc-can",
+      "irq": null
+    },
+    {
+      "id": "can_1",
+      "name": "CAN1 Controller",
+      "type": "can",
+      "bus": "CAN1",
+      "address": "",
+      "description": "CAN peripheral on CAN1",
+      "voltage": "3.3V",
+      "regulator": "vcc-can",
+      "irq": null
+    },
+    {
+      "id": "mipi_csi_2",
+      "name": "MIPI_CSI2 Controller",
+      "type": "mipi_csi",
+      "bus": "MIPI_CSI2",
+      "address": "",
+      "description": "MIPI_CSI peripheral on MIPI_CSI2",
+      "voltage": "3.3V",
+      "regulator": "vcc-mipi_csi",
+      "irq": null
+    },
+    {
+      "id": "mipi_csi_17",
+      "name": "MIPI_CSI Controller",
+      "type": "mipi_csi",
+      "bus": "MIPI_CSI",
+      "address": "",
+      "description": "MIPI_CSI peripheral on MIPI_CSI",
+      "voltage": "3.3V",
+      "regulator": "vcc-mipi_csi",
+      "irq": null
+    },
+    {
+      "id": "mipi_csi_1",
+      "name": "MIPI_CSI1 Controller",
+      "type": "mipi_csi",
+      "bus": "MIPI_CSI1",
+      "address": "",
+      "description": "MIPI_CSI peripheral on MIPI_CSI1",
+      "voltage": "3.3V",
+      "regulator": "vcc-mipi_csi",
+      "irq": null
+    },
+    {
+      "id": "mipi_dsi_19",
+      "name": "MIPI_DSI Controller",
+      "type": "mipi_dsi",
+      "bus": "MIPI_DSI",
+      "address": "",
+      "description": "MIPI_DSI peripheral on MIPI_DSI",
+      "voltage": "3.3V",
+      "regulator": "vcc-mipi_dsi",
+      "irq": null
+    },
+    {
+      "id": "pcie_20",
+      "name": "PCIE Controller",
+      "type": "pcie",
+      "bus": "PCIE",
+      "address": "",
+      "description": "PCIE peripheral on PCIE",
+      "voltage": "3.3V",
+      "regulator": "vcc-pcie",
+      "irq": null
+    },
+    {
+      "id": "emmc_21",
+      "name": "EMMC Controller",
+      "type": "emmc",
+      "bus": "EMMC",
+      "address": "",
+      "description": "EMMC peripheral on EMMC",
+      "voltage": "3.3V",
+      "regulator": "vcc-emmc",
+      "irq": null
+    },
+    {
+      "id": "sd_22",
+      "name": "SD Controller",
+      "type": "sd",
+      "bus": "SD",
+      "address": "",
+      "description": "SD peripheral on SD",
+      "voltage": "3.3V",
+      "regulator": "vcc-sd",
+      "irq": null
+    },
+    {
+      "id": "sd_1",
+      "name": "SD1 Controller",
+      "type": "sd",
+      "bus": "SD1",
+      "address": "",
+      "description": "SD peripheral on SD1",
+      "voltage": "3.3V",
+      "regulator": "vcc-sd",
+      "irq": null
+    },
+    {
+      "id": "i2s_2",
+      "name": "I2S2 Controller",
+      "type": "i2s",
+      "bus": "I2S2",
+      "address": "",
+      "description": "I2S peripheral on I2S2",
+      "voltage": "3.3V",
+      "regulator": "vcc-i2s",
+      "irq": null
+    },
+    {
+      "id": "i2s_25",
+      "name": "I2S Controller",
+      "type": "i2s",
+      "bus": "I2S",
+      "address": "",
+      "description": "I2S peripheral on I2S",
+      "voltage": "3.3V",
+      "regulator": "vcc-i2s",
+      "irq": null
+    },
+    {
+      "id": "adc_1",
+      "name": "ADC1 Controller",
+      "type": "adc",
+      "bus": "ADC1",
+      "address": "",
+      "description": "ADC peripheral on ADC1",
+      "voltage": "3.3V",
+      "regulator": "vcc-adc",
+      "irq": null
+    },
+    {
+      "id": "adc_2",
+      "name": "ADC2 Controller",
+      "type": "adc",
+      "bus": "ADC2",
+      "address": "",
+      "description": "ADC peripheral on ADC2",
+      "voltage": "3.3V",
+      "regulator": "vcc-adc",
+      "irq": null
+    },
+    {
+      "id": "rtc_0",
+      "name": "RTC0 Controller",
+      "type": "rtc",
+      "bus": "RTC0",
+      "address": "",
+      "description": "RTC peripheral on RTC0",
+      "voltage": "3.3V",
+      "regulator": "vcc-rtc",
+      "irq": null
+    },
+    {
+      "id": "lvds_29",
+      "name": "LVDS Controller",
+      "type": "lvds",
+      "bus": "LVDS",
+      "address": "",
+      "description": "LVDS peripheral on LVDS",
+      "voltage": "3.3V",
+      "regulator": "vcc-lvds",
+      "irq": null
+    }
+  ],
+  "power_rails": [
+    {
+      "name": "vcc_5v",
+      "voltage": "5V",
+      "supplies": []
+    }
+  ],
+  "board_name": "VAR-MX7",
+  "cpu_count": null,
+  "cpu_freq_mhz": null,
+  "ram_mb": null
+}

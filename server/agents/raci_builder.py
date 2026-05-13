@@ -105,9 +105,6 @@ def build(hw_map: dict, drivers: List[Dict]) -> dict:
 def _build_rows(drivers: List[Dict]) -> List[Dict]:
     rows = []
     for d in drivers:
-        maintainer = d.get("maintainer", "unknown")
-        consulted  = maintainer if maintainer not in ("unknown", "") \
-                     else "TBD — kernel subsystem maintainer"
         drv_status = d.get("status", "unknown")
         since      = d.get("kernel_since", "unknown")
 
@@ -124,7 +121,6 @@ def _build_rows(drivers: List[Dict]) -> List[Dict]:
             "kernel_since":  since,
             "kconfig":       d.get("kconfig", ""),
             "source_path":   d.get("source_path", ""),
-            "maintainer":    maintainer,
             "status":        drv_status,
             "effort":        d.get("effort", "investigate"),
             "github_url":    d.get("github_url", ""),
@@ -132,10 +128,10 @@ def _build_rows(drivers: List[Dict]) -> List[Dict]:
             "UC22": uc_status["UC22"],
             "UC24": uc_status["UC24"],
             "UC26": uc_status["UC26"],
-            # RACI
+            # RACI — team roles only
             "R": _R,
             "A": _A,
-            "C": consulted,
+            "C": "Upstream Team",
             "I": _I,
         })
     return rows
@@ -259,7 +255,7 @@ def _to_html(rows: List[Dict], board: str, soc: str, recommended: str) -> str:
         {uc_cells}
         <td class="raci-r" title="{html_lib.escape(_R)}">R</td>
         <td class="raci-a" title="{html_lib.escape(_A)}">A</td>
-        <td class="raci-c" title="{c_full}"><span class="c-text">{c_short}</span></td>
+        <td class="raci-c" title="Upstream Team">C</td>
         <td class="raci-i" title="{html_lib.escape(_I)}">I</td>
       </tr>""")
 
@@ -297,7 +293,7 @@ def _to_csv(rows: List[Dict]) -> str:
         return ""
     buf    = io.StringIO()
     fields = ["peripheral", "type", "driver_module", "kernel_since",
-              "kconfig", "source_path", "maintainer", "status", "effort",
+              "kconfig", "source_path", "status", "effort",
               "UC22", "UC24", "UC26", "R", "A", "C", "I"]
     w = csv.DictWriter(buf, fieldnames=fields, extrasaction="ignore")
     w.writeheader()

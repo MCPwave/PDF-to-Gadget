@@ -1,0 +1,41 @@
+{
+  "board": "SMARC",
+  "soc": "Unknown SoC",
+  "arch": "arm64",
+  "cpu_core": "Unknown",
+  "peripherals": [
+    {
+      "id": "usb_1",
+      "name": "USB Controller",
+      "type": "usb",
+      "bus": "USB",
+      "address": "",
+      "description": "USB peripheral on USB",
+      "voltage": "3.3V",
+      "regulator": "vcc-usb",
+      "irq": null
+    },
+    {
+      "id": "ethernet_2",
+      "name": "ETHERNET Controller",
+      "type": "ethernet",
+      "bus": "ETHERNET",
+      "address": "",
+      "description": "ETHERNET peripheral on ETHERNET",
+      "voltage": "3.3V",
+      "regulator": "vcc-ethernet",
+      "irq": null
+    }
+  ],
+  "power_rails": [
+    {
+      "name": "vcc-3v3",
+      "voltage": "3.3V",
+      "supplies": []
+    }
+  ],
+  "board_name": "SMARC",
+  "cpu_count": null,
+  "cpu_freq_mhz": null,
+  "ram_mb": null
+}

@@ -191,6 +191,206 @@ def _merge_hw_maps(base: dict, extra: dict) -> dict:
     return result
 
 
+def merge_hardware_maps(maps_list: list[dict]) -> dict:
+    """
+    Merge multiple hardware_map dicts from different PDFs.
+    
+    Deduplicates:
+      - Buses with matching name and type (considered the same physical bus)
+      - Power rails by name (merging their supplies lists)
+    
+    Adds source_pdf tracking to each peripheral to show which PDF it came from.
+    Validates merged map has each regulator present in power_rails.
+    
+    Args:
+        maps_list: List of hardware_map dicts, one per PDF
+    
+    Returns:
+        Merged hardware_map dict with source_pdf field on all peripherals
+    
+    Logs warnings for:
+      - Empty maps (skipped)
+      - Conflicting addresses (includes both with warning)
+      - Conflicting voltages for same rail (uses first, logs warning)
+    """
+    if not maps_list:
+        return {
+            "board": None,
+            "soc": "Unknown",
+            "arch": "arm64",
+            "cpu_core": None,
+            "cpu_count": None,
+            "cpu_freq_mhz": None,
+            "ram_mb": None,
+            "peripherals": [],
+            "power_rails": [],
+        }
+    
+    warnings = []
+    
+    # Filter out empty maps
+    valid_maps = []
+    for idx, hw_map in enumerate(maps_list):
+        if not hw_map or not isinstance(hw_map, dict):
+            warnings.append(f"PDF {idx+1}: skipped empty/invalid map")
+            continue
+        if not hw_map.get("peripherals"):
+            warnings.append(f"PDF {idx+1}: skipped map with no peripherals")
+            continue
+        valid_maps.append((idx+1, hw_map))
+    
+    if not valid_maps:
+        warnings.append("All maps are empty, returning default structure")
+        for warning in warnings:
+            print(f"[merge_hardware_maps] WARNING: {warning}")
+        return {
+            "board": None,
+            "soc": "Unknown",
+            "arch": "arm64",
+            "cpu_core": None,
+            "cpu_count": None,
+            "cpu_freq_mhz": None,
+            "ram_mb": None,
+            "peripherals": [],
+            "power_rails": [],
+        }
+    
+    # Initialize result with metadata from first valid map
+    result = {
+        "board": valid_maps[0][1].get("board"),
+        "soc": valid_maps[0][1].get("soc", "Unknown"),
+        "arch": valid_maps[0][1].get("arch", "arm64"),
+        "cpu_core": valid_maps[0][1].get("cpu_core"),
+        "cpu_count": valid_maps[0][1].get("cpu_count"),
+        "cpu_freq_mhz": valid_maps[0][1].get("cpu_freq_mhz"),
+        "ram_mb": valid_maps[0][1].get("ram_mb"),
+        "peripherals": [],
+        "power_rails": [],
+    }
+    
+    # Fill in missing metadata from other maps
+    for key in ("board", "soc", "arch", "cpu_core", "cpu_count", "cpu_freq_mhz", "ram_mb"):
+        if not result.get(key):
+            for _, hw_map in valid_maps[1:]:
+                if hw_map.get(key):
+                    result[key] = hw_map[key]
+                    break
+    
+    # Normalize all peripherals: add source_pdf field
+    for pdf_id, hw_map in valid_maps:
+        for p in hw_map.get("peripherals", []):
+            if isinstance(p, dict):
+                if "source_pdf" not in p:
+                    p["source_pdf"] = f"pdf_{pdf_id}"
+    
+    # Deduplicate peripherals by (bus, type) pair
+    seen_buses = {}  # (bus_name, type) -> peripheral entry
+    
+    for pdf_id, hw_map in valid_maps:
+        for p in hw_map.get("peripherals", []):
+            if not isinstance(p, dict):
+                continue
+            bus_name = p.get("bus", "").strip()
+            ptype = p.get("type", "").strip()
+            
+            if not bus_name or not ptype:
+                result["peripherals"].append(p)
+                continue
+            
+            bus_key = (bus_name, ptype)
+            
+            if bus_key not in seen_buses:
+                seen_buses[bus_key] = p
+                result["peripherals"].append(p)
+            else:
+                # Duplicate bus found - existing already in result
+                existing = seen_buses[bus_key]
+                
+                # Check for conflicting addresses
+                if p.get("address") and existing.get("address"):
+                    if p["address"] != existing["address"]:
+                        warnings.append(
+                            f"Address conflict for {bus_name}: {existing['address']} "
+                            f"({existing.get('source_pdf', 'unknown')}) vs {p['address']} "
+                            f"({p.get('source_pdf', 'unknown')}), keeping both"
+                        )
+                        result["peripherals"].append(p)
+                        continue
+                elif p.get("address") and not existing.get("address"):
+                    existing["address"] = p["address"]
+                
+                # Check for conflicting voltages
+                if p.get("voltage") and existing.get("voltage"):
+                    if p["voltage"] != existing["voltage"]:
+                        warnings.append(
+                            f"Voltage conflict for {bus_name}: "
+                            f"{existing['voltage']} (first), {p['voltage']} ({p.get('source_pdf', 'unknown')}), "
+                            f"using first"
+                        )
+                elif p.get("voltage") and not existing.get("voltage"):
+                    existing["voltage"] = p["voltage"]
+                
+                # Merge regulator info
+                if not existing.get("regulator") and p.get("regulator"):
+                    existing["regulator"] = p["regulator"]
+    
+    # Deduplicate power rails by name, merge supplies lists
+    seen_rails = {}
+    for pdf_id, hw_map in valid_maps:
+        for rail in hw_map.get("power_rails", []):
+            if not isinstance(rail, dict):
+                continue
+            rail_name = rail.get("name", "").strip()
+            if not rail_name:
+                continue
+            
+            if rail_name not in seen_rails:
+                # Create a new rail entry (not referencing the original)
+                new_rail = {
+                    "name": rail_name,
+                    "voltage": rail.get("voltage"),
+                    "current_ma": rail.get("current_ma"),
+                    "supplies": list(rail.get("supplies", [])),
+                }
+                seen_rails[rail_name] = new_rail
+                result["power_rails"].append(new_rail)
+            else:
+                existing_rail = seen_rails[rail_name]
+                
+                # Check for voltage conflict
+                if rail.get("voltage") and existing_rail.get("voltage"):
+                    if rail["voltage"] != existing_rail["voltage"]:
+                        warnings.append(
+                            f"Voltage conflict for rail {rail_name}: "
+                            f"{existing_rail['voltage']} (first), {rail['voltage']} (pdf_{pdf_id}), "
+                            f"using first"
+                        )
+                elif rail.get("voltage") and not existing_rail.get("voltage"):
+                    existing_rail["voltage"] = rail["voltage"]
+                
+                # Merge supplies lists
+                if rail.get("supplies"):
+                    for supply in rail["supplies"]:
+                        if supply not in existing_rail["supplies"]:
+                            existing_rail["supplies"].append(supply)
+    
+    # Validate: each peripheral's regulator must exist in power_rails
+    rail_names = {r.get("name", "") for r in result.get("power_rails", []) if r.get("name")}
+    for p in result.get("peripherals", []):
+        regulator = p.get("regulator", "").strip()
+        if regulator and regulator not in rail_names:
+            warnings.append(
+                f"Peripheral {p.get('id', '?')} references unknown regulator '{regulator}'"
+            )
+    
+    # Log all warnings
+    for warning in warnings:
+        print(f"[merge_hardware_maps] WARNING: {warning}")
+    
+    return result
+
+
+
 # ── Ollama ─────────────────────────────────────────────────────────────────────
 
 def _ollama_list_models(host: str) -> list[str]:
