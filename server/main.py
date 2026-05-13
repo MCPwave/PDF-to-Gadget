@@ -8,6 +8,7 @@ import json
 import os
 import re
 import sys
+import time
 import uuid
 from pathlib import Path
 from typing import AsyncIterator
@@ -21,7 +22,7 @@ from pydantic import BaseModel
 
 # add parent dir so we can import agents
 sys.path.insert(0, str(Path(__file__).parent))
-from agents import librarian, dt_architect, snap_engineer, kernel_scout, raci_builder
+from agents import librarian, dt_architect, snap_engineer, kernel_scout, raci_builder, bus_validator
 
 # ── App setup ──────────────────────────────────────────────────────────────────
 
@@ -36,7 +37,18 @@ STATIC_DIR = Path(__file__).parent / "static"
 
 # ── In-memory session store ────────────────────────────────────────────────────
 
-_sessions: dict[str, dict] = {}   # session_id -> { hw_map, pdf_sections }
+_sessions: dict[str, dict] = {}   # session_id -> { hw_map, pdf_sections, created_at, validation_report }
+
+
+def _cleanup_old_sessions(max_age_seconds: int = 3600):
+    """Remove sessions older than max_age_seconds (default 1 hour)."""
+    now = time.time()
+    expired = [sid for sid, sess in _sessions.items()
+               if now - sess.get("created_at", now) > max_age_seconds]
+    for sid in expired:
+        del _sessions[sid]
+    if expired:
+        print(f"[cleanup] Removed {len(expired)} old session(s)")
 
 
 # ── PDF section extraction ─────────────────────────────────────────────────────
@@ -152,104 +164,200 @@ def _event(msg: str, kind: str = "log") -> str:
 
 
 async def _upload_stream(
-    data: bytes,
-    filename: str,
+    files_data: list[tuple[bytes, str]],
     model: str,
     api_key: str,
 ) -> AsyncIterator[str]:
-    """Stream section-by-section extraction progress then return the final hw_map."""
-
-    yield _event(f"📄 Parsing PDF: {filename}", "log")
+    """
+    Stream extraction progress for multiple PDFs, then merge and return final hw_map.
+    
+    Args:
+        files_data: List of (bytes, filename) tuples
+        model: LLM model override
+        api_key: LLM API key
+    
+    Yields:
+        SSE events: log, error, upload_done
+    """
+    if not files_data:
+        yield _event("No files provided", "error")
+        return
+    
+    yield _event(f"📂 Processing {len(files_data)} file(s)…", "log")
     await asyncio.sleep(0)
-
-    is_pdf = filename.lower().endswith(".pdf")
-    if is_pdf:
+    
+    # Cleanup old sessions before processing new upload
+    _cleanup_old_sessions()
+    
+    all_maps: list[dict] = []
+    failed_files: list[str] = []
+    
+    # Extract hardware maps from each file
+    for file_idx, (data, filename) in enumerate(files_data, 1):
+        yield _event(f"📄 File {file_idx}/{len(files_data)}: {filename}", "log")
+        await asyncio.sleep(0)
+        
+        is_pdf = filename.lower().endswith(".pdf")
+        if is_pdf:
+            try:
+                sections = await asyncio.get_event_loop().run_in_executor(
+                    None, _extract_pdf_sections, data
+                )
+            except Exception as e:
+                yield _event(f"  ⚠️  PDF parse error for {filename}: {e}", "error")
+                failed_files.append(filename)
+                continue
+            
+            yield _event(f"  ✓ Found {len(sections)} sections", "log")
+        else:
+            text = data.decode("utf-8", errors="replace")
+            sections = [{"heading": "Full Text", "text": text,
+                        "page_start": 1, "page_end": 1}]
+            yield _event(f"  ✓ Plain-text file processed", "log")
+        
+        await asyncio.sleep(0)
+        
+        if not any(s["text"].strip() for s in sections):
+            yield _event(f"  ⚠️  No extractable text in {filename}", "error")
+            failed_files.append(filename)
+            continue
+        
+        yield _event(f"  🤖 @librarian — extracting hardware map "
+                    f"(model: {model or 'auto-detect'})…", "log")
+        await asyncio.sleep(0)
+        
+        # Extract hardware map from sections
+        def _run():
+            return librarian.run_sections(sections, model_override=model, api_key=api_key)
+        
         try:
-            sections = await asyncio.get_event_loop().run_in_executor(
-                None, _extract_pdf_sections, data
+            hw_map, mode, section_log = await asyncio.get_event_loop().run_in_executor(
+                None, _run
             )
         except Exception as e:
-            yield _event(f"PDF parse error: {e}", "error")
-            return
-        yield _event(f"📑 Found {len(sections)} sections: "
-                     + ", ".join(f'"{s["heading"]}"' for s in sections[:6])
-                     + ("…" if len(sections) > 6 else ""), "log")
-    else:
-        text = data.decode("utf-8", errors="replace")
-        sections = [{"heading": "Full Text", "text": text,
-                     "page_start": 1, "page_end": 1}]
-        yield _event("📄 Plain-text file — treating as single section", "log")
-
-    await asyncio.sleep(0)
-
-    if not any(s["text"].strip() for s in sections):
-        yield _event("No extractable text found in file.", "error")
+            yield _event(f"  ⚠️  @librarian failed for {filename}: {e}", "error")
+            failed_files.append(filename)
+            continue
+        
+        for entry in section_log:
+            yield _event(f"  {entry}", "log")
+            await asyncio.sleep(0)
+        
+        all_maps.append(hw_map)
+        yield _event(f"  ✅ Hardware map extracted: {len(hw_map.get('peripherals', []))} peripherals", "log")
+        await asyncio.sleep(0.2)
+    
+    # Summary of extraction
+    yield _event(f"📋 Extraction complete: {len(all_maps)} file(s) succeeded, "
+                f"{len(failed_files)} failed", "log")
+    
+    if not all_maps:
+        yield _event("All files failed to process", "error")
         return
-
-    yield _event(f"🤖 @librarian — extracting hardware map section by section "
-                 f"(model: {model or 'auto-detect'})…", "log")
+    
+    # Merge hardware maps
+    yield _event("🔗 Merging hardware maps…", "log")
     await asyncio.sleep(0)
-
-    # run_sections is CPU-bound; run in executor so we don't block the event loop
-    def _run():
-        return librarian.run_sections(sections, model_override=model, api_key=api_key)
-
+    
     try:
-        hw_map, mode, section_log = await asyncio.get_event_loop().run_in_executor(
-            None, _run
+        merged_map = await asyncio.get_event_loop().run_in_executor(
+            None, librarian.merge_hardware_maps, all_maps
         )
     except Exception as e:
-        yield _event(f"@librarian failed: {e}", "error")
+        yield _event(f"Merge failed: {e}", "error")
         return
-
-    for entry in section_log:
-        yield _event(entry, "log")
-        await asyncio.sleep(0)
-
+    
+    yield _event(f"✅ Maps merged: {len(merged_map.get('peripherals', []))} total peripherals, "
+                f"{len(merged_map.get('power_rails', []))} power rails", "log")
+    await asyncio.sleep(0)
+    
+    # Store session
     session_id = str(uuid.uuid4())
-    _sessions[session_id] = {"hw_map": hw_map, "sections": sections}
-
+    _sessions[session_id] = {
+        "hw_map": merged_map,
+        "sections": [],
+        "created_at": time.time(),
+        "validation_report": None
+    }
+    
+    # Final upload_done event with merged map
     payload = {
         "type":        "upload_done",
         "session_id":  session_id,
-        "mode":        mode,
-        "board_name":  hw_map.get("board_name", f"Custom {hw_map.get('arch','arm64')}"),
-        "soc":         hw_map.get("soc", "Unknown SoC"),
-        "arch":        hw_map.get("arch", "arm64"),
-        "cpu_core":    hw_map.get("cpu_core", ""),
-        "cpu_count":   hw_map.get("cpu_count", None),
-        "cpu_freq_mhz": hw_map.get("cpu_freq_mhz", None),
-        "ram_mb":      hw_map.get("ram_mb", None),
-        "peripherals": hw_map.get("peripherals", []),
-        "power_rails": hw_map.get("power_rails", []),
-        "text_preview": sections[0]["text"][:500] if sections else "",
-        "sections_processed": len(sections),
+        "mode":        "merged",
+        "board_name":  merged_map.get("board_name", f"Custom {merged_map.get('arch','arm64')}"),
+        "soc":         merged_map.get("soc", "Unknown SoC"),
+        "arch":        merged_map.get("arch", "arm64"),
+        "cpu_core":    merged_map.get("cpu_core", ""),
+        "cpu_count":   merged_map.get("cpu_count", None),
+        "cpu_freq_mhz": merged_map.get("cpu_freq_mhz", None),
+        "ram_mb":      merged_map.get("ram_mb", None),
+        "peripherals": merged_map.get("peripherals", []),
+        "power_rails": merged_map.get("power_rails", []),
+        "files_processed": len(all_maps),
+        "files_failed": len(failed_files),
     }
     yield f"data: {json.dumps(payload)}\n\n"
 
 
 @app.post("/api/upload")
 async def upload_pdf(
-    file: UploadFile = File(...),
+    files: list[UploadFile] = File(...),
     model: str = Form(""),
     api_key: str = Form(""),
 ):
-    data = await file.read()
+    """Accept multiple files and stream extraction progress."""
+    files_data = []
+    for file in files:
+        data = await file.read()
+        files_data.append((data, file.filename or "upload"))
+    
     return StreamingResponse(
-        _upload_stream(data, file.filename or "upload", model, api_key),
+        _upload_stream(files_data, model, api_key),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 
-# ── Generate pipeline (SSE streaming) ─────────────────────────────────────────
+# ── Validation endpoint ────────────────────────────────────────────────────
+
+class ValidateRequest(BaseModel):
+    session_id: str
+
+
+@app.post("/api/validate")
+async def validate_session(req: ValidateRequest):
+    """Validate the merged hardware map and return conflicts/alternatives."""
+    session = _sessions.get(req.session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    hw_map = session["hw_map"]
+    
+    try:
+        validation_result = await asyncio.get_event_loop().run_in_executor(
+            None, bus_validator.validate_connections, [hw_map]
+        )
+    except Exception as e:
+        return {
+            "valid": True,
+            "conflicts": [],
+            "merged_buses": {},
+            "driver_summary": {}
+        }
+    
+    # Store validation report in session
+    session["validation_report"] = validation_result
+    
+    return validation_result
 
 class GenerateRequest(BaseModel):
     session_id: str
     selected_ids: list[str]
+    alternatives: dict = {}  # Maps conflict ID to selected alternative
 
 
-async def _pipeline_stream(session_id: str, selected_ids: list[str]) -> AsyncIterator[str]:
+async def _pipeline_stream(session_id: str, selected_ids: list[str], alternatives: dict = {}) -> AsyncIterator[str]:
     def event(msg: str, kind: str = "log") -> str:
         return f"data: {json.dumps({'type': kind, 'message': msg})}\n\n"
 
@@ -262,6 +370,63 @@ async def _pipeline_stream(session_id: str, selected_ids: list[str]) -> AsyncIte
 
     yield event(f"🔍 @librarian  — hardware map loaded: {len(hw_map['peripherals'])} peripherals", "log")
     await asyncio.sleep(0.3)
+
+    # ── Bus & Driver validation ────────────────────────────────────────────────
+    yield event("🔗 @bus_validator — validating connections and driver availability…", "log")
+    await asyncio.sleep(0.3)
+    
+    try:
+        validation_result = await asyncio.get_event_loop().run_in_executor(
+            None, bus_validator.validate_connections, [hw_map]
+        )
+    except Exception as e:
+        yield event(f"⚠️  Validation failed: {e}", "log")
+        validation_result = {"valid": True, "conflicts": [], "merged_buses": {}, "driver_summary": {}}
+    
+    # Store validation report in session
+    session["validation_report"] = validation_result
+    
+    # Stream conflict events
+    conflicts = validation_result.get("conflicts", [])
+    driver_summary = validation_result.get("driver_summary", {})
+    
+    if conflicts:
+        for conflict in conflicts:
+            conflict_type = conflict.get("type", "unknown")
+            message = conflict.get("message", "")
+            
+            if conflict_type == "driver_unavailable":
+                peripheral_type = conflict.get("peripheral_type", "unknown")
+                bus_name = conflict.get("bus_name", "unknown")
+                alternatives = conflict.get("alternatives", [])
+                
+                alt_msg = ""
+                if alternatives:
+                    alt_options = [f"{a['connection_type']} ({a['driver_status']})" 
+                                  for a in alternatives[:3]]
+                    alt_msg = f" | Alternatives: {', '.join(alt_options)}"
+                
+                yield event(
+                    f"⚠️  {peripheral_type.upper()} via {bus_name} — {message}{alt_msg}",
+                    "conflict"
+                )
+            else:
+                yield event(f"⚠️  {message}", "conflict")
+            
+            await asyncio.sleep(0.1)
+    
+    # Summary of driver status
+    mainline_count = driver_summary.get("mainline", 0)
+    total_drivers = sum(driver_summary.values())
+    if total_drivers > 0:
+        yield event(
+            f"✅ Driver availability: {mainline_count}/{total_drivers} mainline, "
+            f"{driver_summary.get('backport', 0)} backport, "
+            f"{driver_summary.get('vendor', 0)} vendor",
+            "log"
+        )
+    
+    await asyncio.sleep(0.2)
 
     # ── Pinmux conflict check ──────────────────────────────────────────────────
     selected_peripherals = [p for p in hw_map["peripherals"] if p["id"] in selected_ids]
@@ -346,7 +511,7 @@ async def _pipeline_stream(session_id: str, selected_ids: list[str]) -> AsyncIte
 
     yield event("🎉 Pipeline complete!", "done")
 
-    # ── final result payload ───────────────────────────────────────────────────
+    # ── final result payload with validation report ────────────────────────────
     payload = {
         "type":            "result",
         "dts":             dts_content,
@@ -357,6 +522,7 @@ async def _pipeline_stream(session_id: str, selected_ids: list[str]) -> AsyncIte
         "raci_html":       raci_data.get("raci_html", ""),
         "raci_json":       raci_data.get("raci_json", []),
         "recommended_uc":  raci_data.get("recommended_uc", ""),
+        "validation_report": validation_result,
         "files": {
             "dts":       f"/api/download/{session_id}_board.dts",
             "gadget":    f"/api/download/{session_id}_gadget.yaml",
@@ -371,7 +537,7 @@ async def _pipeline_stream(session_id: str, selected_ids: list[str]) -> AsyncIte
 @app.post("/api/generate")
 async def generate_pipeline(req: GenerateRequest):
     return StreamingResponse(
-        _pipeline_stream(req.session_id, req.selected_ids),
+        _pipeline_stream(req.session_id, req.selected_ids, req.alternatives),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

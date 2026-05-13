@@ -633,8 +633,104 @@
   .sel-links { display: flex; gap: 10px; margin-top: 6px; }
   .sel-links a { font-size: 11px; color: var(--canonical-orange); cursor: pointer; text-decoration: underline; }
 
-  /* progress */
+  /* progress and file list */
   #upload-progress { color: var(--canonical-orange); font-size: 12px; }
+  
+  .file-list { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
+  .file-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 13px;
+  }
+  .file-item .name { flex: 1; color: var(--text); }
+  .file-item .status { font-size: 11px; color: var(--muted); }
+  .file-item .remove {
+    color: var(--red);
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+  }
+  .file-item .remove:hover { color: var(--canonical-orange); }
+  
+  /* validation results */
+  #validation-section { margin-top: 16px; display: none; }
+  .validation-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .validation-header h3 { font-size: 14px; font-weight: 500; margin: 0; }
+  .validation-summary {
+    background: var(--surface);
+    border-left: 3px solid var(--yellow);
+    padding: 12px;
+    border-radius: var(--radius);
+    margin-bottom: 12px;
+    font-size: 13px;
+  }
+  .validation-summary strong { color: var(--text); }
+  
+  .conflicts-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin-bottom: 12px;
+  }
+  .conflicts-table th {
+    background: var(--surface2);
+    padding: 8px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    font-weight: 500;
+    color: var(--muted);
+  }
+  .conflicts-table td {
+    padding: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .conflicts-table tr:hover { background: rgba(233, 84, 32, .05); }
+  .conflict-type { font-size: 11px; color: var(--canonical-orange); font-weight: 600; text-transform: uppercase; }
+  .severity-warning { color: var(--yellow); }
+  
+  /* alternative selection */
+  .alt-group { margin-top: 12px; }
+  .alt-title { font-size: 12px; font-weight: 500; margin-bottom: 6px; }
+  .alt-options { display: flex; flex-direction: column; gap: 4px; margin-left: 12px; }
+  .alt-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px;
+    cursor: pointer;
+    border-radius: var(--radius);
+    transition: background .15s;
+  }
+  .alt-option:hover { background: rgba(233, 84, 32, .1); }
+  .alt-option input[type="radio"] { cursor: pointer; margin: 0; }
+  .alt-option label { cursor: pointer; flex: 1; margin: 0; display: inline; }
+  
+  /* progress indicators */
+  .file-progress {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 6px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .progress-bar {
+    flex: 1;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .progress-bar-fill {
+    height: 100%;
+    background: var(--canonical-orange);
+    transition: width .3s;
+  }
 </style>
 </head>
 <body>
@@ -689,15 +785,23 @@
       <h2>📄 Datasheet</h2>
       <div class="upload-zone" id="upload-zone">
         <div class="icon">📂</div>
-        <p>Drop <strong>PDF or TXT</strong> datasheet here<br/>or <strong>click to browse</strong></p>
+        <p>Drop <strong>PDF or TXT</strong> datasheets here<br/>or <strong>click to browse</strong></p>
       </div>
-      <input type="file" id="file-input" accept=".pdf,.txt,.text"/>
-      <div class="file-info" id="file-info">
+      <input type="file" id="file-input" accept=".pdf,.txt,.text" multiple/>
+      
+      <!-- File list for multiple uploads -->
+      <div class="file-list" id="file-list" style="display:none;">
+        <div id="file-items"></div>
+        <button class="btn" id="upload-btn" style="width: 100%; margin-top: 8px;">📤 Upload Files</button>
+      </div>
+      
+      <!-- Selected file info (shown after upload) -->
+      <div class="file-info" id="file-info" style="display:none;">
         <span class="icon">📄</span>
         <span class="name" id="file-name"></span>
         <span class="clear" id="file-clear" title="Remove">✕</span>
       </div>
-      <div class="soc-info" id="soc-info">
+      <div class="soc-info" id="soc-info" style="display:none;">
         <div class="tag"><span>Board</span><strong id="board-name">—</strong></div>
         <div class="tag"><span>SoC</span><strong id="soc-name">—</strong></div>
         <div class="tag"><span>Arch</span><strong id="soc-arch">—</strong></div>
@@ -705,7 +809,27 @@
         <div class="tag"><span>Mode</span><strong id="parse-mode">—</strong></div>
       </div>
       <div id="upload-progress" style="display:none; margin-top:10px; color:var(--muted); font-size:12px;">
-        ⏳ Analysing datasheet…
+        ⏳ Processing files…
+      </div>
+      
+      <!-- Validation results section -->
+      <div id="validation-section">
+        <div class="validation-header">
+          <h3>⚠️ Validation Results</h3>
+        </div>
+        <div class="validation-summary" id="validation-summary"></div>
+        <table class="conflicts-table" id="conflicts-table" style="display:none;">
+          <thead>
+            <tr>
+              <th style="width:20%;">Type</th>
+              <th style="width:25%;">Location</th>
+              <th style="width:15%;">Severity</th>
+              <th style="width:40%;">Details</th>
+            </tr>
+          </thead>
+          <tbody id="conflicts-tbody"></tbody>
+        </table>
+        <div id="alternatives-container"></div>
       </div>
     </div>
 
@@ -974,44 +1098,102 @@
     });
   });
 
-  /* ── Upload zone ──────────────────────────────────────────────── */
-  const zone  = document.getElementById('upload-zone');
-  const inp   = document.getElementById('file-input');
+  /* ── Multi-file upload handling ────────────────────────────────── */
+  const zone     = document.getElementById('upload-zone');
+  const inp      = document.getElementById('file-input');
+  const fileList = document.getElementById('file-list');
+  let selectedFiles = [];
 
   zone.addEventListener('click',      () => inp.click());
   zone.addEventListener('dragover',   e => { e.preventDefault(); zone.classList.add('drag'); });
   zone.addEventListener('dragleave',  () => zone.classList.remove('drag'));
-  zone.addEventListener('drop',       e => { e.preventDefault(); zone.classList.remove('drag'); handleFile(e.dataTransfer.files[0]); });
-  inp.addEventListener('change',      () => { if (inp.files[0]) handleFile(inp.files[0]); });
+  zone.addEventListener('drop',       e => { 
+    e.preventDefault(); 
+    zone.classList.remove('drag');
+    const dropped = Array.from(e.dataTransfer.files);
+    addFilesToSelection(dropped);
+  });
+  inp.addEventListener('change', () => {
+    if (inp.files.length > 0) {
+      const newFiles = Array.from(inp.files);
+      addFilesToSelection(newFiles);
+    }
+  });
+
+  function addFilesToSelection(filesToAdd) {
+    selectedFiles.push(...filesToAdd);
+    renderFileList();
+  }
+
+  function renderFileList() {
+    if (selectedFiles.length === 0) {
+      zone.style.display = '';
+      fileList.style.display = 'none';
+      document.getElementById('file-info').style.display = 'none';
+      document.getElementById('soc-info').style.display = 'none';
+      document.getElementById('validation-section').style.display = 'none';
+      return;
+    }
+
+    zone.style.display = 'none';
+    fileList.style.display = 'block';
+
+    const items = selectedFiles.map((f, idx) => `
+      <div class="file-item">
+        <span class="icon">📄</span>
+        <span class="name">${f.name}</span>
+        <span class="status">${(f.size / 1024).toFixed(1)} KB</span>
+        <span class="remove" onclick="removeFileAtIndex(${idx})">✕</span>
+      </div>`).join('');
+    
+    document.getElementById('file-items').innerHTML = items;
+    document.getElementById('upload-btn').textContent = 
+      `📤 Upload ${selectedFiles.length} file${selectedFiles.length > 1 ? 's' : ''}`;
+  }
+
+  function removeFileAtIndex(idx) {
+    selectedFiles.splice(idx, 1);
+    renderFileList();
+  }
 
   document.getElementById('file-clear').addEventListener('click', () => {
-    sessionId = null; hwMap = null;
-    zone.style.display = '';
-    document.getElementById('file-info').style.display   = 'none';
-    document.getElementById('soc-info').style.display    = 'none';
-    document.getElementById('sel-links').style.display   = 'none';
+    resetUpload();
+  });
+
+  function resetUpload() {
+    sessionId = null;
+    hwMap = null;
+    selectedFiles = [];
+    renderFileList();
     document.getElementById('comp-count').textContent    = '';
     document.getElementById('components-list').innerHTML = `
       <div class="empty-state"><div class="big">🔌</div><p>Upload a datasheet to<br/>detect components</p></div>`;
     document.getElementById('run-btn').disabled = true;
     inp.value = '';
-  });
+  }
 
-  async function handleFile(file) {
-    if (!file) return;
+  document.getElementById('upload-btn').addEventListener('click', uploadFiles);
+
+  async function uploadFiles() {
+    if (selectedFiles.length === 0) return;
+
     zone.style.display = 'none';
-    document.getElementById('file-info').style.display   = 'flex';
-    document.getElementById('file-name').textContent     = file.name;
+    fileList.style.display = 'none';
+    document.getElementById('file-info').style.display = 'flex';
+    document.getElementById('file-name').textContent = 
+      `${selectedFiles.length} file${selectedFiles.length > 1 ? 's' : ''} selected`;
     document.getElementById('upload-progress').style.display = 'block';
     switchTab('terminal');
     clearTerminal();
-    logMsg(`📤 Uploading "${file.name}" via ${modelSel.value || 'auto-detect'}…`);
+    logMsg(`📤 Uploading ${selectedFiles.length} file(s) via ${modelSel.value || 'auto-detect'}…`);
 
     const fd = new FormData();
-    fd.append('file', file);
-    if (modelSel.value)      fd.append('model',   modelSel.value);
+    for (const file of selectedFiles) {
+      fd.append('files', file);
+    }
+    if (modelSel.value) fd.append('model', modelSel.value);
     const activeKey = getActiveApiKey();
-    if (activeKey)           fd.append('api_key', activeKey);
+    if (activeKey) fd.append('api_key', activeKey);
 
     try {
       const res = await fetch('/api/upload', { method: 'POST', body: fd });
@@ -1020,17 +1202,17 @@
         throw new Error(err.detail || 'Upload failed');
       }
 
-      // upload now returns SSE stream — read line by line
-      const reader  = res.body.getReader();
+      // Handle SSE stream
+      const reader = res.body.getReader();
       const decoder = new TextDecoder();
-      let   buf     = '';
+      let buf = '';
 
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
         buf += decoder.decode(value, { stream: true });
         const parts = buf.split('\n\n');
-        buf = parts.pop(); // keep incomplete chunk
+        buf = parts.pop();
 
         for (const part of parts) {
           if (!part.startsWith('data:')) continue;
@@ -1041,7 +1223,6 @@
             logMsg(evt.message);
           } else if (evt.type === 'error') {
             logMsg(`❌ ${evt.message}`, 'error');
-            document.getElementById('upload-progress').style.display = 'none';
           } else if (evt.type === 'upload_done') {
             document.getElementById('upload-progress').style.display = 'none';
             const data = evt;
@@ -1053,23 +1234,26 @@
             };
 
             document.getElementById('board-name').textContent = data.board_name;
-            document.getElementById('soc-name').textContent   = data.soc;
-            document.getElementById('soc-arch').textContent   = data.arch;
-            document.getElementById('soc-core').textContent   = data.cpu_core || '—';
+            document.getElementById('soc-name').textContent = data.soc;
+            document.getElementById('soc-arch').textContent = data.arch;
+            document.getElementById('soc-core').textContent = data.cpu_core || '—';
             document.getElementById('parse-mode').textContent = data.mode;
-            // show cpu/ram extras if available
-            if (data.cpu_count)   document.getElementById('soc-core').textContent +=
-              ` × ${data.cpu_count}`;
-            if (data.cpu_freq_mhz) document.getElementById('soc-core').textContent +=
-              ` @ ${data.cpu_freq_mhz}MHz`;
+            
+            if (data.cpu_count) 
+              document.getElementById('soc-core').textContent += ` × ${data.cpu_count}`;
+            if (data.cpu_freq_mhz) 
+              document.getElementById('soc-core').textContent += ` @ ${data.cpu_freq_mhz}MHz`;
+            
             document.getElementById('soc-info').style.display = 'flex';
-
             modelStatus.textContent = data.mode;
-            modelStatus.className   = `model-status ${data.mode !== 'heuristic' ? 'ok' : 'off'}`;
+            modelStatus.className = `model-status ${data.mode !== 'heuristic' ? 'ok' : 'off'}`;
 
             renderComponents(data.peripherals);
-            logMsg(`✅ @librarian complete — ${data.peripherals.length} components found `
-                   + `across ${data.sections_processed} sections (${data.mode})`);
+            logMsg(`✅ Upload complete — ${data.peripherals.length} components found, ` +
+                   `${data.files_processed} file(s) processed`);
+            
+            // Validate the merged map
+            validateMergedMap();
           }
         }
       }
@@ -1078,6 +1262,90 @@
       document.getElementById('upload-progress').style.display = 'none';
       logMsg(`❌ ${err.message}`, 'error');
     }
+  }
+
+  async function validateMergedMap() {
+    if (!sessionId) return;
+    
+    logMsg('🔍 Validating merged hardware map…');
+    try {
+      const res = await fetch('/api/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId }),
+      });
+
+      if (!res.ok) {
+        logMsg('⚠️ Validation request failed', 'error');
+        return;
+      }
+
+      const validation = await res.json();
+      displayValidationResults(validation);
+    } catch (err) {
+      logMsg(`Validation error: ${err.message}`, 'error');
+    }
+  }
+
+  function displayValidationResults(validation) {
+    const section = document.getElementById('validation-section');
+    const conflicts = validation.conflicts || [];
+    
+    if (conflicts.length === 0) {
+      section.style.display = 'none';
+      logMsg('✅ No conflicts detected in merged hardware map');
+      return;
+    }
+
+    section.style.display = 'block';
+    
+    // Summary
+    const driverAlts = conflicts.filter(c => c.type === 'driver_unavailable');
+    const summary = `Found ${conflicts.length} conflict(s): ${conflicts.length - driverAlts.length} issues, ` +
+                    `${driverAlts.length} with driver alternatives`;
+    document.getElementById('validation-summary').innerHTML = 
+      `<strong>⚠️ ${summary}</strong><p style="margin:4px 0 0 0; font-size:12px; color:var(--muted);">Review below and select alternatives as needed</p>`;
+
+    // Conflicts table
+    const tbody = document.getElementById('conflicts-tbody');
+    tbody.innerHTML = conflicts.map(c => `
+      <tr>
+        <td><span class="conflict-type">${c.type}</span></td>
+        <td>${c.bus_name || c.peripheral_type || '—'}</td>
+        <td><span class="severity-warning">${c.severity}</span></td>
+        <td>${c.message}</td>
+      </tr>`).join('');
+    
+    document.getElementById('conflicts-table').style.display = 'table';
+
+    // Alternatives container
+    const altContainer = document.getElementById('alternatives-container');
+    const driverConflicts = conflicts.filter(c => c.type === 'driver_unavailable');
+    
+    if (driverConflicts.length > 0) {
+      let html = '<div class="alt-group"><div class="alt-title">🔧 Select Driver Alternatives:</div><div class="alt-options">';
+      driverConflicts.forEach((c, idx) => {
+        if (!c.alternatives || c.alternatives.length === 0) return;
+        html += `<div style="margin-bottom: 12px; padding: 8px; background: rgba(233,84,32,.05); border-radius: 4px;">
+          <strong style="font-size: 12px;">${c.peripheral_type || 'Component'} (${c.bus_name})</strong><br/>
+          <span style="font-size: 11px; color: var(--muted);">${c.message}</span>`;
+        
+        c.alternatives.forEach((alt, altIdx) => {
+          const optId = `alt-${idx}-${altIdx}`;
+          html += `<div class="alt-option">
+            <input type="radio" name="alt-${idx}" value="${JSON.stringify(alt).replace(/"/g, '&quot;')}" id="${optId}">
+            <label for="${optId}"><strong>${alt.connection_type}</strong> (${alt.driver_status})</label>
+          </div>`;
+        });
+        html += '</div>';
+      });
+      html += '</div></div>';
+      altContainer.innerHTML = html;
+    } else {
+      altContainer.innerHTML = '';
+    }
+
+    logMsg('⚠️ Review conflicts above and select alternatives if needed');
   }
 
   /* ── Component rendering ──────────────────────────────────────── */
@@ -1134,19 +1402,32 @@
   /* ── Run pipeline ─────────────────────────────────────────────── */
   document.getElementById('run-btn').addEventListener('click', runPipeline);
 
-  async function runPipeline() {
+    async function runPipeline() {
     const selected = getSelectedIds();
     if (!sessionId || !selected.length) return;
+
+    // Collect alternatives if any
+    const alternatives = {};
+    document.querySelectorAll('input[name^="alt-"]:checked').forEach(radio => {
+      const name = radio.name;
+      const value = JSON.parse(radio.value);
+      alternatives[name] = value;
+    });
 
     document.getElementById('run-btn').disabled = true;
     clearTerminal();
     switchTab('terminal');
-    logMsg(`🚀 Starting pipeline — ${selected.length} component(s) selected`);
+    logMsg(`🚀 Starting pipeline — ${selected.length} component(s) selected` +
+           (Object.keys(alternatives).length > 0 ? ` + ${Object.keys(alternatives).length} alternative(s)` : ''));
 
     const resp = await fetch('/api/generate', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ session_id: sessionId, selected_ids: selected }),
+      body:    JSON.stringify({ 
+        session_id: sessionId, 
+        selected_ids: selected,
+        alternatives: alternatives
+      }),
     });
 
     const reader  = resp.body.getReader();

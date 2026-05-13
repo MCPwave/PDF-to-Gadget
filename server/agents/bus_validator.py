@@ -6,8 +6,15 @@ Returns warnings but does not halt processing.
 import re
 from typing import List, Optional, Dict, Any
 
-from kernel_scout import _lookup_db
-from alternative_connections import get_alternatives
+try:
+    from kernel_scout import _lookup_db
+except ImportError:
+    from .kernel_scout import _lookup_db
+
+try:
+    from alternative_connections import get_alternatives
+except ImportError:
+    from .alternative_connections import get_alternatives
 
 
 # ─── Common bus pin patterns ────────────────────────────────────────────────
