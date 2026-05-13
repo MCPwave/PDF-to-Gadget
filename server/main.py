@@ -168,6 +168,11 @@ def _event(msg: str, kind: str = "log") -> str:
     return f"data: {json.dumps({'type': kind, 'message': msg})}\n\n"
 
 
+async def _error_stream(error_msg: str) -> AsyncIterator[str]:
+    """Stream a single error event."""
+    yield _event(error_msg, "error")
+
+
 async def _upload_stream(
     files_data: list[tuple[bytes, str]],
     model: str,
@@ -343,11 +348,38 @@ async def upload_pdf(
     model: str = Form(""),
     api_key: str = Form(""),
 ):
-    """Accept multiple files and stream extraction progress."""
+    """Accept multiple files and stream extraction progress.
+    
+    Limit: 10MB total for all files combined.
+    """
+    MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10MB
+    
     files_data = []
+    total_size = 0
+    
     for file in files:
         data = await file.read()
+        file_size = len(data)
+        total_size += file_size
+        
+        # Check individual file
+        if file_size > MAX_UPLOAD_SIZE:
+            return StreamingResponse(
+                _error_stream(f"File '{file.filename}' is {file_size/1024/1024:.1f}MB. "
+                              f"Maximum per file is {MAX_UPLOAD_SIZE/1024/1024:.0f}MB."),
+                media_type="text/event-stream",
+            )
+        
         files_data.append((data, file.filename or "upload"))
+    
+    # Check total size
+    if total_size > MAX_UPLOAD_SIZE:
+        return StreamingResponse(
+            _error_stream(f"Total upload size is {total_size/1024/1024:.1f}MB. "
+                          f"Maximum allowed is {MAX_UPLOAD_SIZE/1024/1024:.0f}MB. "
+                          f"Please upload fewer files."),
+            media_type="text/event-stream",
+        )
     
     return StreamingResponse(
         _upload_stream(files_data, model, api_key),

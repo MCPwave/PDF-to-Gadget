@@ -1321,7 +1321,31 @@
   });
 
   function addFilesToSelection(filesToAdd) {
-    selectedFiles.push(...filesToAdd);
+    const MAX_SIZE = 10 * 1024 * 1024; // 10MB
+    let totalSize = selectedFiles.reduce((sum, f) => sum + f.size, 0);
+    let rejected = [];
+    
+    for (const file of filesToAdd) {
+      totalSize += file.size;
+      
+      if (file.size > MAX_SIZE) {
+        rejected.push(`${file.name} (${(file.size / 1024 / 1024).toFixed(1)}MB exceeds 10MB limit)`);
+        continue;
+      }
+      
+      if (totalSize > MAX_SIZE) {
+        rejected.push(`${file.name} (total would exceed 10MB limit)`);
+        totalSize -= file.size;
+        continue;
+      }
+      
+      selectedFiles.push(file);
+    }
+    
+    if (rejected.length > 0) {
+      alert(`⚠️ File(s) rejected:\n\n${rejected.join('\n')}\n\nMax total: 10MB`);
+    }
+    
     renderFileList();
   }
 
@@ -1346,9 +1370,15 @@
         <span class="remove" onclick="removeFileAtIndex(${idx})">✕</span>
       </div>`).join('');
     
+    const totalSize = selectedFiles.reduce((sum, f) => sum + f.size, 0);
+    const totalMB = (totalSize / 1024 / 1024).toFixed(1);
+    const sizeWarning = totalSize > 10 * 1024 * 1024 
+      ? ' <span style="color:red">⚠️ Exceeds 10MB!</span>'
+      : totalMB > 8 ? ' <span style="color:orange">⚠️ Close to limit</span>' : '';
+    
     document.getElementById('file-items').innerHTML = items;
     document.getElementById('upload-btn').textContent = 
-      `📤 Upload ${selectedFiles.length} file${selectedFiles.length > 1 ? 's' : ''}`;
+      `📤 Upload ${selectedFiles.length} file${selectedFiles.length > 1 ? 's' : ''} (${totalMB}MB)${sizeWarning}`;
   }
 
   function removeFileAtIndex(idx) {
