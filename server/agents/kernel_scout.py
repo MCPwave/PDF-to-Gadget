@@ -185,6 +185,308 @@ _DRIVER_DB: list[tuple[str, str, dict]] = [
     ("*",               "lvds", {"module": "lvds-codec",  "since": "v5.0",  "kconfig": "DRM_LVDS_CODEC",     "path": "drivers/gpu/drm/bridge/lvds-codec.c",     "maintainer": "Laurent Pinchart <laurent.pinchart@ideasonboard.com>","status": "mainline"}),
 ]
 
+# ── Component IC Driver Database ─────────────────────────────────────────────────
+# Key: (component_type, ic_name, connection_type)  →  driver info
+# component_type: "camera_sensor", "display", "sensor_temperature", etc.
+# ic_name: exact IC model (e.g., "ov5647", "ili9341", "mpu6050")
+# connection_type: "mipi_csi", "spi", "i2c", "usb", "lvds", etc.
+
+_COMPONENT_DRIVER_DB: list[tuple[str, str, str, dict]] = [
+    # ── Camera Sensors ──────────────────────────────────────────────────────
+    ("camera_sensor", "ov5647", "mipi_csi", {
+        "module": "ov5647",
+        "since": "v4.5",
+        "kconfig": "CONFIG_VIDEO_OV5647",
+        "path": "drivers/media/i2c/ov5647.c",
+        "maintainer": "Dave Stevenson <dave.stevenson@raspberrypi.org>",
+        "status": "mainline",
+    }),
+    ("camera_sensor", "ov5647", "usb", {
+        "module": "uvcvideo",
+        "since": "v2.6.26",
+        "kconfig": "CONFIG_MEDIA_USB_SUPPORT",
+        "path": "drivers/media/usb/uvc/",
+        "maintainer": "Laurent Pinchart <laurent.pinchart@ideasonboard.com>",
+        "status": "mainline",
+    }),
+    ("camera_sensor", "imx219", "mipi_csi", {
+        "module": "imx219",
+        "since": "v5.3",
+        "kconfig": "CONFIG_VIDEO_IMX219",
+        "path": "drivers/media/i2c/imx219.c",
+        "maintainer": "Dave Stevenson <dave.stevenson@raspberrypi.org>",
+        "status": "mainline",
+    }),
+    ("camera_sensor", "imx477", "mipi_csi", {
+        "module": "imx477",
+        "since": "v5.7",
+        "kconfig": "CONFIG_VIDEO_IMX477",
+        "path": "drivers/media/i2c/imx477.c",
+        "maintainer": "Dave Stevenson <dave.stevenson@raspberrypi.org>",
+        "status": "mainline",
+    }),
+    ("camera_sensor", "ar0521", "mipi_csi", {
+        "module": "ar0521",
+        "since": "v5.10",
+        "kconfig": "CONFIG_VIDEO_AR0521",
+        "path": "drivers/media/i2c/ar0521.c",
+        "maintainer": "Jacopo Mondi <jacopo@jmondi.org>",
+        "status": "mainline",
+    }),
+
+    # ── Display Controllers ──────────────────────────────────────────────────
+    ("display", "ili9341", "spi", {
+        "module": "ili9341",
+        "since": "v5.8",
+        "kconfig": "CONFIG_DRM_PANEL_SIMPLE",
+        "path": "drivers/gpu/drm/panel/panel-simple.c",
+        "maintainer": "Linus Walleij <linus.walleij@linaro.org>",
+        "status": "mainline",
+    }),
+    ("display", "st7789", "spi", {
+        "module": "st7789",
+        "since": "v5.11",
+        "kconfig": "CONFIG_DRM_ST7789V",
+        "path": "drivers/gpu/drm/tiny/st7789v.c",
+        "maintainer": "David Lechner <david@lechnology.com>",
+        "status": "mainline",
+    }),
+    ("display", "st7735", "spi", {
+        "module": "st7735",
+        "since": "v5.11",
+        "kconfig": "CONFIG_DRM_ST7735R",
+        "path": "drivers/gpu/drm/tiny/st7735r.c",
+        "maintainer": "David Lechner <david@lechnology.com>",
+        "status": "mainline",
+    }),
+    ("display", "uc8159", "spi", {
+        "module": "uc8159",
+        "since": "v5.10",
+        "kconfig": "CONFIG_DRM_ULTRACHIP_UC8159",
+        "path": "drivers/gpu/drm/tiny/uc8159.c",
+        "maintainer": "David Lechner <david@lechnology.com>",
+        "status": "mainline",
+    }),
+
+    # ── Touchscreen Controllers ──────────────────────────────────────────────
+    ("touchscreen", "ft5406", "i2c", {
+        "module": "ft5406",
+        "since": "v4.14",
+        "kconfig": "CONFIG_TOUCHSCREEN_FT5406",
+        "path": "drivers/input/touchscreen/ft5406.c",
+        "maintainer": "Dave Martin <dave.martin@linaro.org>",
+        "status": "mainline",
+    }),
+    ("touchscreen", "edt-ft5x06", "i2c", {
+        "module": "edt-ft5x06",
+        "since": "v3.0",
+        "kconfig": "CONFIG_TOUCHSCREEN_EDT_FT5X06",
+        "path": "drivers/input/touchscreen/edt-ft5x06.c",
+        "maintainer": "Simon Budig <simon.budig@kernelconcepts.de>",
+        "status": "mainline",
+    }),
+    ("touchscreen", "goodix", "i2c", {
+        "module": "goodix",
+        "since": "v4.0",
+        "kconfig": "CONFIG_TOUCHSCREEN_GOODIX",
+        "path": "drivers/input/touchscreen/goodix.c",
+        "maintainer": "Bastien Nocera <hadess@hadess.net>",
+        "status": "mainline",
+    }),
+
+    # ── Temperature Sensors ──────────────────────────────────────────────────
+    ("sensor_temperature", "tmp36", "i2c", {
+        "module": "lm75",
+        "since": "v2.6.16",
+        "kconfig": "CONFIG_SENSORS_LM75",
+        "path": "drivers/hwmon/lm75.c",
+        "maintainer": "Jean Delvare <jdelvare@suse.de>",
+        "status": "mainline",
+    }),
+    ("sensor_temperature", "bmp280", "i2c", {
+        "module": "bmp280",
+        "since": "v4.2",
+        "kconfig": "CONFIG_BMP280",
+        "path": "drivers/iio/pressure/bmp280-core.c",
+        "maintainer": "Jonathan Cameron <jic23@kernel.org>",
+        "status": "mainline",
+    }),
+    ("sensor_temperature", "bmp280", "spi", {
+        "module": "bmp280",
+        "since": "v4.2",
+        "kconfig": "CONFIG_BMP280",
+        "path": "drivers/iio/pressure/bmp280-spi.c",
+        "maintainer": "Jonathan Cameron <jic23@kernel.org>",
+        "status": "mainline",
+    }),
+
+    # ── Accelerometers / IMUs ───────────────────────────────────────────────
+    ("sensor_accelerometer", "mpu6050", "i2c", {
+        "module": "mpu6050",
+        "since": "v3.9",
+        "kconfig": "CONFIG_INV_MPU6050_I2C",
+        "path": "drivers/iio/imu/inv_mpu6050/",
+        "maintainer": "Jean-Baptiste Maneyrol <jmaneyrol@invensense.com>",
+        "status": "mainline",
+    }),
+    ("sensor_accelerometer", "mpu6050", "spi", {
+        "module": "mpu6050",
+        "since": "v3.9",
+        "kconfig": "CONFIG_INV_MPU6050_SPI",
+        "path": "drivers/iio/imu/inv_mpu6050/",
+        "maintainer": "Jean-Baptiste Maneyrol <jmaneyrol@invensense.com>",
+        "status": "mainline",
+    }),
+    ("sensor_accelerometer", "lsm6dsm", "i2c", {
+        "module": "st_lsm6dsx",
+        "since": "v4.15",
+        "kconfig": "CONFIG_ST_LSM6DSX",
+        "path": "drivers/iio/imu/st_lsm6dsx/",
+        "maintainer": "Lorenzo Bianconi <lorenzo@kernel.org>",
+        "status": "mainline",
+    }),
+    ("sensor_accelerometer", "lsm6dsm", "spi", {
+        "module": "st_lsm6dsx",
+        "since": "v4.15",
+        "kconfig": "CONFIG_ST_LSM6DSX",
+        "path": "drivers/iio/imu/st_lsm6dsx/",
+        "maintainer": "Lorenzo Bianconi <lorenzo@kernel.org>",
+        "status": "mainline",
+    }),
+
+    # ── Proximity / Ambient Light Sensors ────────────────────────────────────
+    ("sensor_proximity", "apds9960", "i2c", {
+        "module": "apds9960",
+        "since": "v5.14",
+        "kconfig": "CONFIG_APDS9960",
+        "path": "drivers/iio/light/apds9960.c",
+        "maintainer": "Matteo Martelli <matmartelli@gmail.com>",
+        "status": "mainline",
+    }),
+    ("sensor_light", "bh1750", "i2c", {
+        "module": "bh1750",
+        "since": "v3.9",
+        "kconfig": "CONFIG_BH1750",
+        "path": "drivers/iio/light/bh1750.c",
+        "maintainer": "Tomasz Duszynski <tduszyns@gmail.com>",
+        "status": "mainline",
+    }),
+
+    # ── Power Management ICs ─────────────────────────────────────────────────
+    ("pmic", "axp209", "i2c", {
+        "module": "axp20x",
+        "since": "v3.13",
+        "kconfig": "CONFIG_AXP20X_I2C",
+        "path": "drivers/mfd/axp20x.c",
+        "maintainer": "Chen-Yu Tsai <wens@csie.org>",
+        "status": "mainline",
+    }),
+    ("pmic", "tps65217", "i2c", {
+        "module": "tps65217",
+        "since": "v3.2",
+        "kconfig": "CONFIG_MFD_TPS65217",
+        "path": "drivers/mfd/tps65217.c",
+        "maintainer": "AnilKumar Ch <anilkumar@ti.com>",
+        "status": "mainline",
+    }),
+
+    # ── ADCs (Analog-to-Digital Converters) ──────────────────────────────────
+    ("adc", "ads1015", "i2c", {
+        "module": "ads1015",
+        "since": "v3.9",
+        "kconfig": "CONFIG_ADS1015",
+        "path": "drivers/iio/adc/ads1015.c",
+        "maintainer": "Daniel Baluta <daniel.baluta@intel.com>",
+        "status": "mainline",
+    }),
+    ("adc", "ads1115", "i2c", {
+        "module": "ads1015",
+        "since": "v3.9",
+        "kconfig": "CONFIG_ADS1015",
+        "path": "drivers/iio/adc/ads1015.c",
+        "maintainer": "Daniel Baluta <daniel.baluta@intel.com>",
+        "status": "mainline",
+    }),
+    ("adc", "mcp3008", "spi", {
+        "module": "mcp320x",
+        "since": "v3.10",
+        "kconfig": "CONFIG_MCP320X",
+        "path": "drivers/iio/adc/mcp320x.c",
+        "maintainer": "Oskar Andero <oskar.andero@gmail.com>",
+        "status": "mainline",
+    }),
+    ("adc", "mcp3208", "spi", {
+        "module": "mcp320x",
+        "since": "v3.10",
+        "kconfig": "CONFIG_MCP320X",
+        "path": "drivers/iio/adc/mcp320x.c",
+        "maintainer": "Oskar Andero <oskar.andero@gmail.com>",
+        "status": "mainline",
+    }),
+
+    # ── GPIO Expanders ──────────────────────────────────────────────────────
+    ("gpio_expander", "pcf8574", "i2c", {
+        "module": "gpio-pcf857x",
+        "since": "v2.6.34",
+        "kconfig": "CONFIG_GPIO_PCF857X",
+        "path": "drivers/gpio/gpio-pcf857x.c",
+        "maintainer": "David Brownell <dbrownell@users.sourceforge.net>",
+        "status": "mainline",
+    }),
+    ("gpio_expander", "mcp23017", "i2c", {
+        "module": "gpio-mcp23s08",
+        "since": "v2.6.34",
+        "kconfig": "CONFIG_GPIO_MCP23S08",
+        "path": "drivers/gpio/gpio-mcp23s08.c",
+        "maintainer": "Peter Korsgaard <peter@korsgaard.com>",
+        "status": "mainline",
+    }),
+    ("gpio_expander", "mcp23008", "i2c", {
+        "module": "gpio-mcp23s08",
+        "since": "v2.6.34",
+        "kconfig": "CONFIG_GPIO_MCP23S08",
+        "path": "drivers/gpio/gpio-mcp23s08.c",
+        "maintainer": "Peter Korsgaard <peter@korsgaard.com>",
+        "status": "mainline",
+    }),
+
+    # ── Real-Time Clocks ────────────────────────────────────────────────────
+    ("rtc", "ds1307", "i2c", {
+        "module": "rtc-ds1307",
+        "since": "v2.6.22",
+        "kconfig": "CONFIG_RTC_DRV_DS1307",
+        "path": "drivers/rtc/rtc-ds1307.c",
+        "maintainer": "Alexandre Belloni <alexandre.belloni@bootlin.com>",
+        "status": "mainline",
+    }),
+    ("rtc", "pcf8563", "i2c", {
+        "module": "rtc-pcf8563",
+        "since": "v2.6.29",
+        "kconfig": "CONFIG_RTC_DRV_PCF8563",
+        "path": "drivers/rtc/rtc-pcf8563.c",
+        "maintainer": "Jingoo Han <jingoohan1@gmail.com>",
+        "status": "mainline",
+    }),
+
+    # ── LEDs / Lighting ──────────────────────────────────────────────────────
+    ("led", "apa102", "spi", {
+        "module": "led-apa102",
+        "since": "v4.19",
+        "kconfig": "CONFIG_LEDS_APA102",
+        "path": "drivers/leds/led-apa102.c",
+        "maintainer": "Heiner Kallweit <hkallweit1@gmail.com>",
+        "status": "mainline",
+    }),
+    ("led", "ws2812", "spi", {
+        "module": "led-pwm",
+        "since": "v3.1",
+        "kconfig": "CONFIG_LEDS_PWM",
+        "path": "drivers/leds/leds-pwm.c",
+        "maintainer": "Luotao Fu <l.fu@pengutronix.de>",
+        "status": "mainline",
+    }),
+]
+
 # ── SoC family resolver ────────────────────────────────────────────────────────
 
 def _soc_family(soc: str) -> str:
@@ -209,6 +511,41 @@ def _lookup_db(soc: str, ptype: str) -> Optional[dict]:
             break  # first SoC-specific match wins
 
     return best_specific or best_wildcard
+
+
+def lookup_component_driver(
+    component_type: str,
+    ic_name: str,
+    connection_type: str,
+    soc: Optional[str] = None,
+) -> dict:
+    """
+    Lookup component IC driver in the component driver database.
+
+    Args:
+        component_type: e.g., "camera_sensor", "display", "sensor_temperature"
+        ic_name: IC model name (e.g., "ov5647", "ili9341", "mpu6050")
+        connection_type: e.g., "mipi_csi", "spi", "i2c", "usb"
+        soc: Optional SoC name (for future multi-SoC component support)
+
+    Returns:
+        dict with keys: {status, module, since, kconfig, path, maintainer}
+        On failure: {status: "unknown", message: "..."}
+    """
+    comp_type_lower = component_type.lower()
+    ic_lower = ic_name.lower()
+    conn_lower = connection_type.lower()
+
+    for comp_type, ic, conn, info in _COMPONENT_DRIVER_DB:
+        if (comp_type.lower() == comp_type_lower and
+            ic.lower() == ic_lower and
+            conn.lower() == conn_lower):
+            return dict(info)
+
+    return {
+        "status": "unknown",
+        "message": f"No driver info for {ic_name} on {connection_type} ({component_type})",
+    }
 
 
 # ── GitHub API lookup (online enrichment) ─────────────────────────────────────

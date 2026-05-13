@@ -15,7 +15,23 @@ import re
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Any
+from typing import Any, Optional
+
+# Import extraction modules for component detection
+try:
+    from component_extractor import detect_component_keywords
+except ImportError:
+    detect_component_keywords = None
+
+try:
+    from ic_matcher import match_component_ics
+except ImportError:
+    match_component_ics = None
+
+try:
+    from connector_parser import parse_connector_pins
+except ImportError:
+    parse_connector_pins = None
 
 # ── Shared prompt builder ──────────────────────────────────────────────────────
 
@@ -248,12 +264,14 @@ def _separate_components(peripherals: list[dict]) -> tuple[list[dict], list[dict
     
     return board_perips, components
 
+
+def _merge_hw_maps(base: dict, extra: dict) -> dict:
     """Merge two hw_maps: prefer non-null scalars from extra, union peripherals/rails."""
     result = dict(base)
     for key in ("board", "soc", "arch", "cpu_core", "cpu_count", "cpu_freq_mhz", "ram_mb"):
         if not result.get(key) and extra.get(key):
             result[key] = extra[key]
-    existing_ids = {p["id"] for p in result.get("peripherals", [])}
+    existing_ids = {p["id"] for p in result.get("peripherals", []) if "id" in p}
     for p in extra.get("peripherals", []):
         pid = p.get("id", "")
         if pid and pid not in existing_ids:
@@ -263,14 +281,229 @@ def _separate_components(peripherals: list[dict]) -> tuple[list[dict], list[dict
             # enrich existing with address if we now have one
             if p.get("address"):
                 for ep in result["peripherals"]:
-                    if ep["id"] == pid and not ep.get("address"):
+                    if ep.get("id") == pid and not ep.get("address"):
                         ep["address"] = p["address"]
-    existing_rails = {r["name"] for r in result.get("power_rails", [])}
+    existing_rails = {r["name"] for r in result.get("power_rails", []) if "name" in r}
     for r in extra.get("power_rails", []):
         if r.get("name") and r["name"] not in existing_rails:
             result.setdefault("power_rails", []).append(r)
             existing_rails.add(r["name"])
     return result
+
+
+# ── Component Extraction ──────────────────────────────────────────────────────────
+
+def extract_components_from_pdf(pdf_text: str) -> list[dict]:
+    """
+    Extract components (ICs, sensors, peripherals) from PDF text.
+    
+    Combines three extraction methods:
+    1. Keyword detection (component_extractor.detect_component_keywords)
+    2. IC matching (ic_matcher.match_component_ics)
+    3. Connector parsing (connector_parser.parse_connector_pins, if available)
+    
+    Merges results with deduplication by IC name.
+    
+    Args:
+        pdf_text: Extracted text from PDF
+        
+    Returns:
+        List of component dicts with schema:
+        {
+            "id": "camera_ov5647_0",
+            "name": "OV5647 Camera Module",
+            "type": "camera",
+            "is_component": True,
+            "component_ic": {
+                "name": "OV5647",
+                "vendor": "OmniVision",
+                "type": "camera_sensor"
+            },
+            "connection_type": "mipi_csi",
+            "connector": {
+                "pins": ["CSI_D0", "CSI_D1", ...],
+                "voltage": "1.8V",
+                "required_board_interface": "MIPI_CSI0"
+            },
+            "source": "keyword_detection|ic_match|connector_parse",
+            "confidence": 0.9
+        }
+    """
+    if not pdf_text or not pdf_text.strip():
+        return []
+    
+    components_by_ic = {}  # ic_name -> component dict
+    
+    # 1. IC Matching (most reliable)
+    if match_component_ics:
+        try:
+            ic_matches = match_component_ics(pdf_text)
+            for ic_match in ic_matches:
+                # Convert ICMatch object to dict if needed
+                if hasattr(ic_match, 'to_dict'):
+                    match_dict = ic_match.to_dict()
+                else:
+                    match_dict = ic_match if isinstance(ic_match, dict) else ic_match.__dict__
+                
+                ic_name = match_dict.get("ic_name", "").lower()
+                if not ic_name:
+                    continue
+                
+                # Generate component ID from IC name
+                comp_id = f"component_{ic_name}_{len(components_by_ic)}"
+                
+                # Extract vendor from known ICs
+                vendor_map = {
+                    "ov5647": "OmniVision",
+                    "imx219": "Sony",
+                    "imx477": "Sony",
+                    "ar0521": "ON Semiconductor",
+                    "ili9341": "Ilitek",
+                    "st7789": "Sitronix",
+                    "st7735": "Sitronix",
+                    "ft5406": "Focaltech",
+                    "bmp280": "Bosch",
+                    "tmp36": "Analog Devices",
+                    "mpu6050": "InvenSense",
+                    "ads1015": "Texas Instruments",
+                    "ads1115": "Texas Instruments",
+                }
+                vendor = vendor_map.get(ic_name, "Unknown")
+                
+                component = {
+                    "id": comp_id,
+                    "name": f"{ic_name.upper()} Component",
+                    "type": match_dict.get("component_type", "sensor"),
+                    "is_component": True,
+                    "component_ic": {
+                        "name": ic_name.upper(),
+                        "vendor": vendor,
+                        "type": match_dict.get("component_type", "unknown")
+                    },
+                    "connection_type": match_dict.get("connection_type", "unknown"),
+                    "connector": {
+                        "pins": [],
+                        "voltage": "3.3V",
+                        "required_board_interface": None
+                    },
+                    "source": "ic_match",
+                    "confidence": match_dict.get("confidence", 0.5),
+                    "context": match_dict.get("context", "")
+                }
+                
+                # Store by IC name for deduplication
+                if ic_name not in components_by_ic:
+                    components_by_ic[ic_name] = component
+                else:
+                    # Prefer higher confidence match
+                    if match_dict.get("confidence", 0) > components_by_ic[ic_name].get("confidence", 0):
+                        components_by_ic[ic_name] = component
+        except Exception as e:
+            print(f"[extract_components_from_pdf] IC matching error: {e}")
+    
+    # 2. Keyword Detection (for additional context, only as fallback)
+    if detect_component_keywords:
+        try:
+            keyword_matches = detect_component_keywords(pdf_text)
+            
+            # Track component types we already have from IC matches
+            # Map keywords to full component types
+            type_mapping = {
+                "camera": ["camera_sensor", "camera"],
+                "sensor": ["camera_sensor", "sensor_temperature", "sensor_accelerometer", "sensor_proximity", "sensor_light"],
+                "display": ["display"],
+                "touchscreen": ["touchscreen"],
+                "audio": ["audio_codec", "amplifier", "microphone", "speaker"],
+                "wifi": ["wifi"],
+                "bluetooth": ["bluetooth"],
+                "nfc": ["nfc"],
+                "modem": ["modem"],
+                "gps": ["gps"],
+                "temperature": ["sensor_temperature"],
+                "accelerometer": ["sensor_accelerometer"],
+                "gyro": ["sensor_accelerometer"],
+                "compass": ["magnetometer"],
+                "pressure": ["sensor_temperature"],
+                "light": ["sensor_light"],
+            }
+            
+            existing_types = {
+                comp.get("component_ic", {}).get("type", "").lower()
+                for comp in components_by_ic.values()
+            }
+            
+            for match in keyword_matches:
+                keyword = match.get("keyword", "").lower()
+                if not keyword or keyword == "other":
+                    continue
+                
+                # Only use keyword if it's marked as component type
+                if match.get("section_type") != "component":
+                    continue
+                
+                # Skip if we already have a component that matches this keyword type
+                mapped_types = type_mapping.get(keyword, [keyword])
+                if any(t in existing_types for t in mapped_types):
+                    continue
+                
+                # Use keyword to create component if not already found
+                comp_id = f"component_{keyword}_{len(components_by_ic)}"
+                if keyword not in components_by_ic:
+                    component = {
+                        "id": comp_id,
+                        "name": f"{keyword.title()} Component",
+                        "type": keyword,
+                        "is_component": True,
+                        "component_ic": {
+                            "name": keyword.upper(),
+                            "vendor": "Unknown",
+                            "type": keyword
+                        },
+                        "connection_type": "unknown",
+                        "connector": {
+                            "pins": [],
+                            "voltage": "3.3V",
+                            "required_board_interface": None
+                        },
+                        "source": "keyword_detection",
+                        "confidence": 0.4,
+                        "context": match.get("context", "")
+                    }
+                    components_by_ic[keyword] = component
+        except Exception as e:
+            print(f"[extract_components_from_pdf] Keyword detection error: {e}")
+    
+    # 3. Connector Parsing (if available)
+    if parse_connector_pins:
+        try:
+            # Try to extract connector sections and parse pins
+            connector_sections = re.findall(
+                r"(connector|pinout|pin map|pin configuration)[\s\S]{0,1000}?(?=\n\n|\Z)",
+                pdf_text,
+                re.IGNORECASE
+            )
+            for section in connector_sections:
+                try:
+                    pins = parse_connector_pins(section)
+                    if pins and len(components_by_ic) > 0:
+                        # Apply pins to most recently added component
+                        last_comp = list(components_by_ic.values())[-1]
+                        if last_comp.get("connector"):
+                            last_comp["connector"]["pins"] = pins
+                except Exception:
+                    pass
+        except Exception as e:
+            print(f"[extract_components_from_pdf] Connector parsing error: {e}")
+    
+    # Convert dict values to list and remove internal fields
+    components = []
+    for comp in components_by_ic.values():
+        # Remove internal 'context' field
+        if "context" in comp:
+            del comp["context"]
+        components.append(comp)
+    
+    return components
 
 
 def merge_hardware_maps(maps_list: list[dict]) -> dict:
@@ -1334,6 +1567,48 @@ def _run_sections_internal(sections, model_override, api_key):
                 merged = _merge_hw_maps(merged, hw) if merged else hw
             except Exception:
                 pass
+        
+        # Extract components from each section
+        try:
+            components = extract_components_from_pdf(text)
+            if components:
+                # Add components to merged hardware map
+                if not merged:
+                    merged = {
+                        "board": None,
+                        "soc": None,
+                        "arch": None,
+                        "cpu_core": None,
+                        "cpu_count": None,
+                        "cpu_freq_mhz": None,
+                        "ram_mb": None,
+                        "peripherals": [],
+                        "power_rails": []
+                    }
+                
+                # Add components as peripherals with is_component=True
+                if "peripherals" not in merged:
+                    merged["peripherals"] = []
+                
+                # Deduplicate components by IC name
+                existing_component_ics = {
+                    p.get("component_ic", {}).get("name", "").lower()
+                    for p in merged.get("peripherals", [])
+                    if p.get("is_component")
+                }
+                
+                for comp in components:
+                    ic_name = comp.get("component_ic", {}).get("name", "").lower()
+                    if ic_name and ic_name not in existing_component_ics:
+                        merged["peripherals"].append(comp)
+                        existing_component_ics.add(ic_name)
+                
+                n_c = len([c for c in components if c.get("component_ic", {}).get("name", "").lower() not in existing_component_ics])
+                if n_c > 0:
+                    log.append(f"       ↳ components: {len(components)} detected")
+        except Exception as e:
+            # Component extraction errors are non-fatal
+            pass
 
     if llm_succeeded and model_override:
         mode = model_override

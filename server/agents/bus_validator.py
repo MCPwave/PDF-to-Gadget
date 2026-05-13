@@ -7,9 +7,9 @@ import re
 from typing import List, Optional, Dict, Any
 
 try:
-    from kernel_scout import _lookup_db
+    from kernel_scout import _lookup_db, lookup_component_driver
 except ImportError:
-    from .kernel_scout import _lookup_db
+    from .kernel_scout import _lookup_db, lookup_component_driver
 
 try:
     from alternative_connections import get_alternatives

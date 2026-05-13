@@ -262,45 +262,6 @@
   }
   .soc-info .tag span { color: var(--canonical-orange); margin-right: 4px; font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
 
-  /* Board and Components sections */
-  .board-section {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 12px;
-    margin-bottom: 12px;
-  }
-  .board-section h3 {
-    font-size: 13px;
-    font-weight: 600;
-    margin-bottom: 8px;
-    color: var(--canonical-orange);
-    text-transform: uppercase;
-    letter-spacing: .05em;
-  }
-  .board-details {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-    font-size: 12px;
-  }
-  .board-detail {
-    padding: 6px;
-    background: rgba(233, 84, 32, .05);
-    border-radius: 2px;
-  }
-  .board-detail .label {
-    color: var(--muted);
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: .04em;
-    margin-bottom: 2px;
-  }
-  .board-detail .value {
-    color: var(--text);
-    font-weight: 500;
-  }
-
   /* Component list */
   .components-list {
     flex: 1;
@@ -309,41 +270,22 @@
   }
   .comp-item {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     gap: 10px;
-    padding: 10px;
+    padding: 8px 10px;
     border-radius: var(--radius);
     cursor: pointer;
     transition: background .15s;
     margin-bottom: 2px;
-    border: 1px solid transparent;
   }
   .comp-item:hover { background: var(--surface2); }
-  .comp-item.validation-ok { border-color: var(--green); background: rgba(14, 132, 32, .05); }
-  .comp-item.validation-warn { border-color: var(--yellow); background: rgba(249, 155, 17, .05); }
-  .comp-item.validation-err { border-color: var(--red); background: rgba(199, 22, 43, .05); }
   .comp-item input[type=checkbox] {
-    width: 16px; height: 16px; cursor: pointer; accent-color: var(--canonical-orange); margin-top: 2px; flex-shrink: 0;
+    width: 16px; height: 16px; cursor: pointer; accent-color: var(--canonical-orange);
   }
-  .comp-item .comp-icon { font-size: 18px; width: 24px; text-align: center; flex-shrink: 0; }
+  .comp-item .comp-icon { font-size: 18px; width: 24px; text-align: center; }
   .comp-item .comp-details { flex: 1; min-width: 0; }
   .comp-item .comp-name { font-size: 13px; font-weight: 500; }
   .comp-item .comp-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
-  .comp-item .comp-table {
-    font-size: 11px;
-    margin-top: 6px;
-    border-collapse: collapse;
-    width: 100%;
-  }
-  .comp-item .comp-table td {
-    padding: 3px 4px;
-    border-bottom: 1px solid rgba(255,255,255,.1);
-  }
-  .comp-item .comp-table td:first-child {
-    color: var(--muted);
-    min-width: 80px;
-    font-weight: 500;
-  }
   .comp-item .comp-badge {
     font-size: 10px;
     padding: 1px 6px;
@@ -353,18 +295,6 @@
     font-weight: 600;
     letter-spacing: .04em;
   }
-  .comp-item .comp-status {
-    font-size: 10px;
-    padding: 2px 6px;
-    border-radius: 2px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: .04em;
-    margin-top: 6px;
-  }
-  .comp-status.ok { background: var(--green); color: #fff; }
-  .comp-status.warn { background: var(--yellow); color: #000; }
-  .comp-status.error { background: var(--red); color: #fff; }
 
   /* type badge colors */
   .type-i2c      { color: #d2a8ff; border-color: #d2a8ff; }
@@ -740,135 +670,7 @@
     font-size: 13px;
   }
   .validation-summary strong { color: var(--text); }
-  .validation-summary p { margin: 4px 0 0 0; font-size: 12px; color: var(--muted); }
-
-  /* Component validation cards */
-  .comp-validation-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 12px;
-    margin-bottom: 8px;
-  }
-  .comp-validation-card.status-ok { border-left: 3px solid var(--green); }
-  .comp-validation-card.status-warn { border-left: 3px solid var(--yellow); }
-  .comp-validation-card.status-error { border-left: 3px solid var(--red); }
-
-  .comp-validation-title {
-    font-size: 13px;
-    font-weight: 600;
-    margin-bottom: 8px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .comp-validation-status {
-    display: inline-block;
-    font-size: 10px;
-    font-weight: 700;
-    padding: 2px 8px;
-    border-radius: 2px;
-    text-transform: uppercase;
-    letter-spacing: .04em;
-  }
-  .comp-validation-status.ok { background: var(--green); color: #fff; }
-  .comp-validation-status.warn { background: var(--yellow); color: #000; }
-  .comp-validation-status.error { background: var(--red); color: #fff; }
-
-  .comp-validation-details {
-    font-size: 12px;
-    margin-bottom: 8px;
-  }
-  .comp-validation-details .item {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 6px;
-    align-items: flex-start;
-  }
-  .comp-validation-details .item .label {
-    color: var(--muted);
-    min-width: 80px;
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: .04em;
-  }
-  .comp-validation-details .item .value {
-    color: var(--text);
-    flex: 1;
-  }
-  .comp-validation-drivers {
-    background: rgba(233, 84, 32, .05);
-    padding: 8px;
-    border-radius: 2px;
-    margin-bottom: 8px;
-    font-size: 11px;
-  }
-  .comp-validation-drivers .driver {
-    margin-bottom: 4px;
-  }
-  .comp-validation-drivers .driver:last-child { margin-bottom: 0; }
-  .comp-validation-drivers .driver .status {
-    display: inline-block;
-    padding: 1px 4px;
-    border-radius: 2px;
-    font-size: 9px;
-    font-weight: 600;
-    text-transform: uppercase;
-    margin-left: 4px;
-  }
-  .comp-validation-drivers .driver .status.mainline { background: var(--green); color: #fff; }
-  .comp-validation-drivers .driver .status.backport { background: var(--yellow); color: #000; }
-  .comp-validation-drivers .driver .status.vendor { background: var(--canonical-orange); color: #fff; }
-  .comp-validation-drivers .driver .status.unknown { background: var(--muted); color: #000; }
-
-  .comp-validation-alternatives {
-    margin-top: 8px;
-  }
-  .comp-validation-alternatives-title {
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--canonical-orange);
-    margin-bottom: 6px;
-    text-transform: uppercase;
-    letter-spacing: .04em;
-  }
-  .comp-validation-alternatives-list {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-  .alt-radio-option {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 8px;
-    background: rgba(233, 84, 32, .05);
-    border-radius: 2px;
-    font-size: 11px;
-    cursor: pointer;
-  }
-  .alt-radio-option:hover { background: rgba(233, 84, 32, .1); }
-  .alt-radio-option input[type=radio] {
-    cursor: pointer;
-    accent-color: var(--canonical-orange);
-  }
-  .alt-radio-option .alt-type {
-    font-weight: 600;
-    flex: 1;
-  }
-  .alt-radio-option .alt-driver-status {
-    display: inline-block;
-    padding: 1px 4px;
-    border-radius: 2px;
-    font-size: 9px;
-    font-weight: 600;
-    text-transform: uppercase;
-  }
-  .alt-radio-option .alt-driver-status.mainline { background: var(--green); color: #fff; }
-  .alt-radio-option .alt-driver-status.backport { background: var(--yellow); color: #000; }
-  .alt-radio-option .alt-driver-status.vendor { background: var(--canonical-orange); color: #fff; }
-  .alt-radio-option .alt-driver-status.unknown { background: var(--muted); color: #000; }
-
+  
   .conflicts-table {
     width: 100%;
     border-collapse: collapse;
@@ -1006,13 +808,6 @@
         <div class="tag"><span>Core</span><strong id="soc-core">—</strong></div>
         <div class="tag"><span>Mode</span><strong id="parse-mode">—</strong></div>
       </div>
-      
-      <!-- Board Details Section (new) -->
-      <div class="board-section" id="board-section" style="display:none;">
-        <h3>🖥 Board</h3>
-        <div class="board-details" id="board-details"></div>
-      </div>
-      
       <div id="upload-progress" style="display:none; margin-top:10px; color:var(--muted); font-size:12px;">
         ⏳ Processing files…
       </div>
@@ -1020,10 +815,21 @@
       <!-- Validation results section -->
       <div id="validation-section">
         <div class="validation-header">
-          <h3>✓ Component Validation</h3>
+          <h3>⚠️ Validation Results</h3>
         </div>
         <div class="validation-summary" id="validation-summary"></div>
-        <div id="comp-validation-cards"></div>
+        <table class="conflicts-table" id="conflicts-table" style="display:none;">
+          <thead>
+            <tr>
+              <th style="width:20%;">Type</th>
+              <th style="width:25%;">Location</th>
+              <th style="width:15%;">Severity</th>
+              <th style="width:40%;">Details</th>
+            </tr>
+          </thead>
+          <tbody id="conflicts-tbody"></tbody>
+        </table>
+        <div id="alternatives-container"></div>
       </div>
     </div>
 
@@ -1357,14 +1163,11 @@
   function resetUpload() {
     sessionId = null;
     hwMap = null;
-    window._validationData = null;
     selectedFiles = [];
     renderFileList();
     document.getElementById('comp-count').textContent    = '';
     document.getElementById('components-list').innerHTML = `
       <div class="empty-state"><div class="big">🔌</div><p>Upload a datasheet to<br/>detect components</p></div>`;
-    document.getElementById('board-section').style.display = 'none';
-    document.getElementById('validation-section').style.display = 'none';
     document.getElementById('run-btn').disabled = true;
     inp.value = '';
   }
@@ -1446,7 +1249,6 @@
             modelStatus.className = `model-status ${data.mode !== 'heuristic' ? 'ok' : 'off'}`;
 
             renderComponents(data.peripherals);
-            renderBoardSection(data);
             logMsg(`✅ Upload complete — ${data.peripherals.length} components found, ` +
                    `${data.files_processed} file(s) processed`);
             
@@ -1488,138 +1290,66 @@
   function displayValidationResults(validation) {
     const section = document.getElementById('validation-section');
     const conflicts = validation.conflicts || [];
-    const driverSummary = validation.driver_summary || {};
     
-    // Store validation for later use
-    window._validationData = validation;
-
     if (conflicts.length === 0) {
-      // All OK - show success message but keep section visible
-      const totalMainline = driverSummary.mainline || 0;
-      const total = Object.values(driverSummary).reduce((a, b) => a + b, 0);
-      document.getElementById('validation-summary').innerHTML = 
-        `<strong>✅ All components validated!</strong><p style="margin:4px 0 0 0; font-size:12px; color:var(--muted);">${totalMainline}/${total} drivers from mainline kernel</p>`;
-      document.getElementById('comp-validation-cards').innerHTML = '';
-      section.style.display = 'block';
-      logMsg('✅ All components OK - ready to generate');
-      updateRunBtn();
+      section.style.display = 'none';
+      logMsg('✅ No conflicts detected in merged hardware map');
       return;
     }
 
     section.style.display = 'block';
     
-    // Build summary
-    const withAlts = conflicts.filter(c => c.alternatives && c.alternatives.length > 0).length;
-    const mainlineCount = driverSummary.mainline || 0;
-    const totalCount = Object.values(driverSummary).reduce((a, b) => a + b, 0);
-    const summary = `${totalCount - conflicts.length}/${totalCount} components OK`;
-    
+    // Summary
+    const driverAlts = conflicts.filter(c => c.type === 'driver_unavailable');
+    const summary = `Found ${conflicts.length} conflict(s): ${conflicts.length - driverAlts.length} issues, ` +
+                    `${driverAlts.length} with driver alternatives`;
     document.getElementById('validation-summary').innerHTML = 
-      `<strong>⚠️ ${summary}</strong><p style="margin:4px 0 0 0; font-size:12px; color:var(--muted);">${conflicts.length} component(s) need attention${withAlts > 0 ? `, ${withAlts} have alternatives` : ''}</p>`;
+      `<strong>⚠️ ${summary}</strong><p style="margin:4px 0 0 0; font-size:12px; color:var(--muted);">Review below and select alternatives as needed</p>`;
 
-    // Build component validation cards
-    let html = '';
-    conflicts.forEach((conflict, idx) => {
-      const statusClass = conflict.alternatives && conflict.alternatives.length > 0 ? 'warn' : 'error';
-      const statusText = conflict.alternatives && conflict.alternatives.length > 0 ? 'ALTERNATIVES' : 'NO SOLUTION';
-      const statusIcon = statusClass === 'warn' ? '⚠️' : '❌';
-      
-      html += `<div class="comp-validation-card status-${statusClass}">
-        <div class="comp-validation-title">
-          ${statusIcon} <strong>${conflict.peripheral_type || 'Component'}</strong>
-          <span class="comp-validation-status ${statusClass}">${statusText}</span>
-        </div>
-        <div class="comp-validation-details">
-          <div class="item">
-            <div class="label">Connection</div>
-            <div class="value">${conflict.bus_name || '—'}</div>
-          </div>
-          <div class="item">
-            <div class="label">Message</div>
-            <div class="value">${conflict.message || '—'}</div>
+    // Conflicts table
+    const tbody = document.getElementById('conflicts-tbody');
+    tbody.innerHTML = conflicts.map(c => `
+      <tr>
+        <td><span class="conflict-type">${c.type}</span></td>
+        <td>${c.bus_name || c.peripheral_type || '—'}</td>
+        <td><span class="severity-warning">${c.severity}</span></td>
+        <td>${c.message}</td>
+      </tr>`).join('');
+    
+    document.getElementById('conflicts-table').style.display = 'table';
+
+    // Alternatives container
+    const altContainer = document.getElementById('alternatives-container');
+    const driverConflicts = conflicts.filter(c => c.type === 'driver_unavailable');
+    
+    if (driverConflicts.length > 0) {
+      let html = '<div class="alt-group"><div class="alt-title">🔧 Select Driver Alternatives:</div><div class="alt-options">';
+      driverConflicts.forEach((c, idx) => {
+        if (!c.alternatives || c.alternatives.length === 0) return;
+        html += `<div style="margin-bottom: 12px; padding: 8px; background: rgba(233,84,32,.05); border-radius: 4px;">
+          <strong style="font-size: 12px;">${c.peripheral_type || 'Component'} (${c.bus_name})</strong><br/>
+          <span style="font-size: 11px; color: var(--muted);">${c.message}</span>`;
+        
+        c.alternatives.forEach((alt, altIdx) => {
+          const optId = `alt-${idx}-${altIdx}`;
+          html += `<div class="alt-option">
+            <input type="radio" name="alt-${idx}" value="${JSON.stringify(alt).replace(/"/g, '&quot;')}" id="${optId}">
+            <label for="${optId}"><strong>${alt.connection_type}</strong> (${alt.driver_status})</label>
           </div>`;
-      
-      // Show driver status if available
-      if (conflict.driver_status) {
-        html += `<div class="item">
-          <div class="label">Driver</div>
-          <div class="value">${conflict.driver_name || '—'} <span class="status" style="display:inline-block;padding:1px 4px;border-radius:2px;font-size:9px;font-weight:600;text-transform:uppercase;margin-left:4px;background:${getDriverStatusColor(conflict.driver_status)};color:#fff;">${conflict.driver_status}</span></div>
-        </div>`;
-      }
-      
-      html += '</div>';
-
-      // Add alternatives if available
-      if (conflict.alternatives && conflict.alternatives.length > 0) {
-        html += `<div class="comp-validation-alternatives">
-          <div class="comp-validation-alternatives-title">💡 Try these connections:</div>
-          <div class="comp-validation-alternatives-list">`;
-        
-        conflict.alternatives.forEach((alt, altIdx) => {
-          const radioId = `alt-conflict-${idx}-${altIdx}`;
-          html += `<label class="alt-radio-option">
-            <input type="radio" name="conflict-${idx}" value="${JSON.stringify(alt).replace(/"/g, '&quot;')}" id="${radioId}"/>
-            <span class="alt-type">${alt.connection_type}</span>
-            <span class="alt-driver-status ${alt.driver_status}">${alt.driver_status}</span>
-          </label>`;
         });
-        
-        html += `</div></div>`;
-      }
-      
-      html += `</div>`;
-    });
-
-    document.getElementById('comp-validation-cards').innerHTML = html;
-    
-    // Add event listeners to radio buttons
-    document.querySelectorAll('input[name^="conflict-"]').forEach(radio => {
-      radio.addEventListener('change', updateRunBtn);
-    });
-    
-    logMsg(`⚠️ ${conflicts.length} component(s) need attention - select alternatives or resolve issues`);
-    updateRunBtn();
-  }
-
-  function getDriverStatusColor(status) {
-    switch(status) {
-      case 'mainline': return '#0E8420';
-      case 'backport': return '#F99B11';
-      case 'vendor': return '#E95420';
-      default: return '#AEA79F';
+        html += '</div>';
+      });
+      html += '</div></div>';
+      altContainer.innerHTML = html;
+    } else {
+      altContainer.innerHTML = '';
     }
+
+    logMsg('⚠️ Review conflicts above and select alternatives if needed');
   }
 
   /* ── Component rendering ──────────────────────────────────────── */
-  function renderBoardSection(boardData) {
-    const section = document.getElementById('board-section');
-    const details = document.getElementById('board-details');
-    
-    if (!boardData.soc) {
-      section.style.display = 'none';
-      return;
-    }
-    
-    const fields = [
-      { label: 'Board Name', value: boardData.board_name || '—' },
-      { label: 'SoC', value: boardData.soc || '—' },
-      { label: 'Architecture', value: boardData.arch || '—' },
-      { label: 'CPU Core', value: boardData.cpu_core || '—' },
-      { label: 'CPU Count', value: boardData.cpu_count ? `${boardData.cpu_count} cores` : '—' },
-      { label: 'CPU Frequency', value: boardData.cpu_freq_mhz ? `${boardData.cpu_freq_mhz} MHz` : '—' },
-      { label: 'RAM', value: boardData.ram_mb ? `${boardData.ram_mb} MB` : '—' },
-      { label: 'Power Rails', value: boardData.power_rails ? `${boardData.power_rails.length} rail(s)` : '—' },
-    ];
-    
-    details.innerHTML = fields.map(f => `
-      <div class="board-detail">
-        <div class="label">${f.label}</div>
-        <div class="value">${f.value}</div>
-      </div>`).join('');
-    
-    section.style.display = 'block';
-  }
-  
+  const TYPE_ICONS = {
     i2c:'🔗', spi:'⚡', uart:'📡', usart:'📡', gpio:'🔌', pwm:'🌀',
     usb:'🔷', ethernet:'🌐', can:'🚗', can_fd:'🚗', hdmi:'🖥',
     mipi_csi:'📷', mipi_dsi:'🖥', camera:'📷', lvds:'📺',
@@ -1638,43 +1368,16 @@
     }
     document.getElementById('sel-links').style.display = 'flex';
     document.getElementById('comp-count').textContent  = `(${peripherals.length})`;
-    list.innerHTML = peripherals.map(p => {
-      // Build component table with connection details
-      let tableHtml = '<table class="comp-table">';
-      
-      // Component IC (if available in component_ic object or as ic field)
-      const icName = p.component_ic?.name || p.ic || (p.name.includes('(') ? p.name.substring(p.name.indexOf('(') + 1, p.name.indexOf(')')) : '');
-      if (icName) tableHtml += `<tr><td>IC:</td><td>${icName}</td></tr>`;
-      
-      // Connection type
-      const connType = p.connection_type || p.bus || '';
-      if (connType) tableHtml += `<tr><td>Connection:</td><td>${connType}</td></tr>`;
-      
-      // Address (if applicable)
-      if (p.address && p.address !== 'null') tableHtml += `<tr><td>Address:</td><td>${p.address}</td></tr>`;
-      
-      // Voltage
-      const voltage = p.voltage || (p.connector?.voltage) || '';
-      if (voltage) tableHtml += `<tr><td>Voltage:</td><td>${voltage}</td></tr>`;
-      
-      // Required interface (for components)
-      const requiredInterface = p.connector?.required_board_interface || '';
-      if (requiredInterface) tableHtml += `<tr><td>Interface:</td><td>${requiredInterface}</td></tr>`;
-      
-      tableHtml += '</table>';
-      
-      return `
+    list.innerHTML = peripherals.map(p => `
       <label class="comp-item">
         <input type="checkbox" class="comp-check" value="${p.id}" checked/>
         <span class="comp-icon">${TYPE_ICONS[p.type] || '⚙️'}</span>
         <span class="comp-details">
           <span class="comp-name">${p.name}</span>
-          <span class="comp-meta">${p.type.toUpperCase()}${p.address && p.address !== 'null' ? ' @ ' + p.address : ''}</span>
-          ${tableHtml}
+          <span class="comp-meta">${p.bus}${p.address ? ' @ '+p.address : ''}${p.voltage ? ' · '+p.voltage : ''}</span>
         </span>
         <span class="comp-badge type-${p.type}">${p.type}</span>
-      </label>`;
-    }).join('');
+      </label>`).join('');
     updateRunBtn();
     document.querySelectorAll('.comp-check').forEach(cb =>
       cb.addEventListener('change', updateRunBtn));
@@ -1689,30 +1392,7 @@
 
   function updateRunBtn() {
     const any = [...document.querySelectorAll('.comp-check')].some(c => c.checked);
-    const validation = window._validationData || { conflicts: [] };
-    const unresolved = validation.conflicts || [];
-    
-    // Check if all conflicts have alternatives selected
-    let hasUnresolvedConflicts = false;
-    if (unresolved.length > 0) {
-      // For each conflict, check if it has alternatives and if one is selected
-      for (let i = 0; i < unresolved.length; i++) {
-        const conflict = unresolved[i];
-        if (!conflict.alternatives || conflict.alternatives.length === 0) {
-          // No alternatives available - cannot proceed
-          hasUnresolvedConflicts = true;
-          break;
-        }
-        // Check if an alternative is selected for this conflict
-        const selected = document.querySelector(`input[name="conflict-${i}"]:checked`);
-        if (!selected) {
-          hasUnresolvedConflicts = true;
-          break;
-        }
-      }
-    }
-    
-    document.getElementById('run-btn').disabled = !(sessionId && any && !hasUnresolvedConflicts);
+    document.getElementById('run-btn').disabled = !(sessionId && any);
   }
 
   function getSelectedIds() {
@@ -1722,13 +1402,13 @@
   /* ── Run pipeline ─────────────────────────────────────────────── */
   document.getElementById('run-btn').addEventListener('click', runPipeline);
 
-  async function runPipeline() {
+    async function runPipeline() {
     const selected = getSelectedIds();
     if (!sessionId || !selected.length) return;
 
     // Collect alternatives if any
     const alternatives = {};
-    document.querySelectorAll('input[name^="conflict-"]:checked').forEach(radio => {
+    document.querySelectorAll('input[name^="alt-"]:checked').forEach(radio => {
       const name = radio.name;
       const value = JSON.parse(radio.value);
       alternatives[name] = value;
