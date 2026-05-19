@@ -1253,7 +1253,7 @@
   });
 
   function addFilesToSelection(filesToAdd) {
-    const MAX_SIZE = 10 * 1024 * 1024; // 10MB
+    const MAX_SIZE = 20 * 1024 * 1024; // 20MB
     let totalSize = selectedFiles.reduce((sum, f) => sum + f.size, 0);
     let rejected = [];
     
@@ -1261,12 +1261,12 @@
       totalSize += file.size;
       
       if (file.size > MAX_SIZE) {
-        rejected.push(`${file.name} (${(file.size / 1024 / 1024).toFixed(1)}MB exceeds 10MB limit)`);
+        rejected.push(`${file.name} (${(file.size / 1024 / 1024).toFixed(1)}MB exceeds 20MB limit)`);
         continue;
       }
       
       if (totalSize > MAX_SIZE) {
-        rejected.push(`${file.name} (total would exceed 10MB limit)`);
+        rejected.push(`${file.name} (total would exceed 20MB limit)`);
         totalSize -= file.size;
         continue;
       }
@@ -1275,7 +1275,7 @@
     }
     
     if (rejected.length > 0) {
-      alert(`⚠️ File(s) rejected:\n\n${rejected.join('\n')}\n\nMax total: 10MB`);
+      alert(`⚠️ File(s) rejected:\n\n${rejected.join('\n')}\n\nMax total: 20MB`);
     }
     
     renderFileList();
@@ -1304,9 +1304,9 @@
     
     const totalSize = selectedFiles.reduce((sum, f) => sum + f.size, 0);
     const totalMB = (totalSize / 1024 / 1024).toFixed(1);
-    const sizeWarning = totalSize > 10 * 1024 * 1024 
-      ? ' <span style="color:red">⚠️ Exceeds 10MB!</span>'
-      : totalMB > 8 ? ' <span style="color:orange">⚠️ Close to limit</span>' : '';
+    const sizeWarning = totalSize > 20 * 1024 * 1024 
+      ? ' <span style="color:red">⚠️ Exceeds 20MB!</span>'
+      : totalMB > 16 ? ' <span style="color:orange">⚠️ Close to limit</span>' : '';
     
     document.getElementById('file-items').innerHTML = items;
     document.getElementById('upload-btn').textContent = 

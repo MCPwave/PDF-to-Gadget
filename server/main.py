@@ -350,9 +350,9 @@ async def upload_pdf(
 ):
     """Accept multiple files and stream extraction progress.
     
-    Limit: 10MB total for all files combined.
+    Limit: 20MB total for all files combined.
     """
-    MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10MB
+    MAX_UPLOAD_SIZE = 20 * 1024 * 1024  # 20MB
     
     files_data = []
     total_size = 0
