@@ -106,6 +106,30 @@ _COMPONENT_TYPES = {
         r'\baccelerator\b', r'\bhardware\s*acceleration\b',
         r'\bvpu\b', r'\bio\s*accelerator\b',
     ],
+    'audio': [
+        r'\baudio\s*codec\b', r'\baudio\s*processor\b', r'\bsound\b',
+        r'\bamp\b', r'\bamplifier\b', r'\baudio\s*driver\b',
+        r'\bmic\b', r'\bmicrophone\b', r'\bspeaker\b', r'\bdac\s*audio\b',
+    ],
+    'security': [
+        r'\btpm\b', r'\btrusted\s*platform\s*module\b',
+        r'\bsecure\s*element\b', r'\bsecurity\s*processor\b',
+        r'\bcrypto\b', r'\bencryption\b', r'\bse050\b',
+        r'\bse\d{3}\b', r'\bhmac\b', r'\brng\b', r'\brandom\s*number\b',
+    ],
+    'power': [
+        r'\bac\s*adapter\b', r'\bpower\s*supply\b', r'\bpsu\b',
+        r'\bbattery\s*management\b', r'\bcharger\b', r'\busb\s*pd\b',
+        r'\bpower\s*delivery\b', r'\bpowerbank\b',
+    ],
+    'acpi': [
+        r'\bacpi\b', r'\badvanced\s*configuration\b',
+        r'\bpower\s*interface\b', r'\bfadt\b', r'\bdsdt\b',
+        r'\bssdt\b', r'\baml\b',
+    ],
+    'watchdog': [
+        r'\bwatchdog\b', r'\bwdt\b', r'\btimer\b',
+    ],
 }
 
 # Connection type keywords

@@ -146,41 +146,191 @@ def detect_components_with_llm(
         (components_list, model_used)
     """
     
-    prompt = f"""Analyze this datasheet and extract ALL components, peripherals, and accelerators.
-Include detailed information about manufacturers, versions, and variants.
+    prompt = f"""You are a hardware component detection expert analyzing a SoM/SoC/board datasheet.
+
+TASK: Extract EVERY component, IC, module, and peripheral visible in this datasheet.
+Include: processors, accelerators, interfaces, sensors, connectors, power management, security, audio, video, and system components.
 
 Datasheet excerpt:
 {pdf_text[:5000]}
 
-Return JSON with:
+===== COMPREHENSIVE COMPONENT CATEGORIES TO SEARCH FOR =====
+
+1. PROCESSORS & ACCELERATORS (Priority HIGH)
+   - CPUs: ARM Cortex (A78, A76, A72, A53, M4, M7), Intel (Core, Atom, Xeon), AMD (Ryzen)
+   - GPUs: NVIDIA (GeForce, Tegra, Maxwell, Pascal, Turing, Ada), AMD Radeon, Intel (Iris Xe, Arc), ARM Mali (G77, G78, G710), Qualcomm Adreno, Imagination PowerVR, Vivante
+   - NPUs: Qualcomm Hexagon, NVIDIA NVDLA, Google Coral, Mediatek APU, Kirin NPU
+   - TPUs: Google TPU (v2, v3, v4, v5), Edge TPU
+   - DSPs: Qualcomm Hexagon, TI C66x, C67x, Cadence Tensilica
+
+2. MEMORY INTERFACES & STORAGE (Priority HIGH)
+   - DRAM: DDR3, DDR4, DDR5, LPDDR4, LPDDR5, HBM2
+   - Flash: eMMC (size), NOR Flash, NAND Flash, UFS, SD Card Interface
+   - Cache: L2, L3 sizes and types
+
+3. COMMUNICATION INTERFACES (Priority HIGH)
+   - USB: versions (2.0, 3.0, 3.1, 3.2, USB-C with power delivery), host/device/OTG modes, hub chips
+   - Ethernet: speeds (10/100/1000/2.5G/5G/10G), PHY chips (Realtek RTL8211, Broadcom, TI)
+   - WiFi/BLE: 802.11a/b/g/n/ac/ax, Bluetooth versions, antenna designs, RF chips (Qualcomm WCN, Broadcom, Realtek)
+   - Serial: UART, RS232, RS485 count and voltages
+   - I2C/SPI: bus width, speed, multiplexing options
+   - CAN: version, transceiver chips
+   - RS-485: driver ICs
+   - GPIO: count, voltage domains, expander ICs
+
+4. CAMERA & VIDEO INTERFACES (Priority HIGH)
+   - CSI: MIPI CSI-2 (versions 6, 7, 8, 9), lanes (2/4), speeds
+   - Sensor ICs: Sony IMX (IMX477, IMX219, IMX477R), OmniVision OV (OV5640, OV8856), Arducam, GalaxyCore GC
+   - Connectors: Flex cable, ribbon connectors, BNC for CVBS
+
+5. DISPLAY & TOUCHSCREEN (Priority HIGH)
+   - DSI: MIPI DSI versions, lane count, dual DSI
+   - Display Panels: LCD, OLED, eInk, TFT, IPS technologies
+   - HDMI: versions (1.4, 2.0, 2.1), CEC, audio support
+   - DisplayPort: versions (1.2, 1.3, 1.4, 2.0)
+   - LVDS: dual/quad LVDS, differential pairs
+   - RGB/Parallel: 18-bit, 24-bit, timing
+   - Touchscreen Controllers: FocalTech FT5426, Goodix GT911/GT928, Synaptics DSX/RMI, Ilitek ILI2511, Elantech
+   - Touch Interfaces: Capacitive, resistive, multi-touch, I2C/SPI connected
+
+6. AUDIO COMPONENTS (Priority HIGH)
+   - Audio Codecs: Realtek ALC (ALC5640, ALC5651, ALC892), Cirrus Logic (CS4341, CS4370), Qualcomm Qdsp, Wolfson, Analog Devices
+   - Audio Amplifiers: Class D, Class AB, TPA, NXP, Infineon
+   - Microphone: Digital (PDM), analog, array microphones
+   - Speaker Drivers: mono, stereo, 2.1, 5.1, count and power
+   - Audio Jacks: 3.5mm combo (headphone+mic), SPDIF, optical
+
+7. POWER MANAGEMENT (Priority HIGH)
+   - PMICs: Axp (AXP803, AXP809), TPS (TPS65217, TPS6598), Maxim (MAX77686), BD (BD71847), NXP (PF8100)
+   - Voltage Regulators: buck, boost, LDO, count and output rails
+   - Battery Management: charger ICs, fuel gauges, BMS controllers
+   - USB Power Delivery: Controller ICs, USB PD version support, max power watts
+   - AC Adapters: Input voltage, output voltage, current rating
+   - Power Distribution: Barrel jack, USB-C power, proprietary connectors
+
+8. SECURITY & CRYPTOGRAPHY (Priority HIGH)
+   - TPM: TPM 1.2, TPM 2.0, manufacturers (Infineon SLB9670, ST ST33, Nuvoton)
+   - Secure Elements: NXP SE050, NXP A7005, others
+   - Crypto Accelerators: dedicated crypto engines, secure boot support
+   - RNG: Random Number Generator modules
+   - Secure Enclave: Apple Secure Enclave equivalent on other platforms
+
+9. SENSORS (Priority MEDIUM)
+   - Temperature: TMP36, BMP280, BME280, MCP9808, TI TMP sensors
+   - Accelerometer/Gyro/IMU: MPU-6050, LSM6DSM, ICM-20948, 6-axis, 9-axis
+   - Light: BH1750, APDS-9960, TCS34725
+   - Proximity: VL53L0X, VL53L1X, APDS-9960 (dual-function)
+   - Barometer: BMP280, BME680
+   - Humidity: DHT22, BME680, SHT31
+   - Gas/Air Quality: BME680, CCS811
+   - Compass/Magnetometer: HMC5883L, AK8963
+
+10. SYSTEM MANAGEMENT (Priority MEDIUM)
+    - RTC: DS1307, PCF8563, iMX6 internal RTC
+    - Watchdog: Dedicated chips or SoC internal
+    - ACPI: BIOS/UEFI/firmware support indicators
+    - Fan Control: Temperature sensors + fan drivers
+    - System Monitor: Voltage/current monitors, health sensors
+
+11. CONNECTORS & PHYSICAL INTERFACES (Priority MEDIUM)
+    - Standard: USB-A, USB-C, Micro-USB, HDMI, Ethernet RJ45
+    - Custom: Hirose, DF40, proprietary board-to-board connectors
+    - Debug: JTAG, SWD, UART headers, test points
+    - Power: DC barrel jack, USB-C PD, internal power rails
+
+12. MEMORY & STORAGE ICs (Priority MEDIUM)
+    - DDR Controllers: count, channels, error correction (ECC)
+    - Storage Controllers: eMMC, NVMe, SATA, QSPI/Octal-SPI
+    - Cache RAM: amount, speed
+    - EEPROM: size, purpose (MAC address, calibration)
+
+===== COMPONENT REFERENCE EXAMPLES =====
+
+Audio Codecs by Manufacturer:
+  Realtek: ALC5640, ALC5651, ALC892, ALC1220
+  Cirrus Logic: CS4341, CS4370, CS4272, CS4382
+  Qualcomm: Qdsp6, Hexagon
+  Wolfson: WM8960, WM8994
+  Analog Devices: ADAU1361, ADAU1701
+
+Touchscreen Controllers:
+  FocalTech: FT5426, FT6236, FT5216
+  Goodix: GT911, GT928, GT917S
+  Synaptics: RMI4, DSX series
+  Ilitek: ILI2511, ILI2512
+  Elantech: ET7XX series
+
+Audio Amplifiers:
+  Texas Instruments: TPA2013, TPA3138
+  NXP: JQ6500, TEA5767
+  Infineon: MA12070
+
+Security ICs:
+  Infineon: SLB9670 (TPM 2.0), SLB9645 (TPM 1.2)
+  ST Microelectronics: ST33 TPM
+  NXP: SE050, SE051
+
+Power Management ICs:
+  Axpower: AXP803, AXP809
+  TI: TPS65217, TPS6598
+  Maxim: MAX77686, MAX20086
+  NXP: PF8100, PCA9420
+
+===== JSON RESPONSE FORMAT =====
+
+Return ONLY valid JSON (no markdown, no code fences). Use this structure:
+
+```
 {{
   "components": [
     {{
-      "name": "Component name",
-      "type": "camera|display|sensor|npu|gpu|tpu|cpu|dsp|pmic|uart|i2c|spi|usb|ethernet|accelerator|mipi|other",
-      "model_number": "IC model if available",
-      "manufacturer": "Intel, AMD, NVIDIA, Bosch, Sony, OmniVision, etc.",
-      "version": "Version/generation (e.g., MIPI 7, Cortex-A78, Gen 4, v2, v3, v4)",
-      "variant": "Specific variant (e.g., MIPI CSI-2, Intel Iris Xe, NVIDIA GeForce RTX 4090)",
-      "connection": "mipi_csi|mipi_dsi|i2c|spi|usb|uart|gpio|hdmi|pcie|ethernet|local|other",
-      "connection_version": "Protocol version (e.g., CSI-2 v1.3, I2C v7.0)",
-      "voltage": "3.3V or similar",
-      "description": "Brief description",
-      "confidence": 0.95
+      "name": "Exact component name or model",
+      "type": "cpu|gpu|npu|tpu|dsp|camera|display|touchscreen|audio|sensor_temperature|sensor_accelerometer|sensor_light|sensor_proximity|sensor_pressure|sensor_humidity|pmic|power|security|uart|i2c|spi|usb|ethernet|mipi_csi|mipi_dsi|gpio|rtc|watchdog|led|other",
+      "model_number": "Exact IC/part number (e.g., RTL8211E, ALC5640)",
+      "manufacturer": "Company name (Realtek, Goodix, Qualcomm, etc.)",
+      "version": "Generation/revision (e.g., v2.0, Gen 4, CSI-2 v1.3)",
+      "variant": "Specific model variant (e.g., RTL8211E-VB)",
+      "connection": "How it connects to main SoC: i2c|spi|uart|gpio|mipi_csi|mipi_dsi|usb|pcie|hdmi|displayport|local|ethernet|other",
+      "connection_version": "Protocol version (e.g., I2C 7.0, USB 3.1, MIPI CSI-2 v1.3)",
+      "voltage": "Operating voltage (3.3V, 1.8V, 1.2V)",
+      "description": "1-sentence description of function/role",
+      "confidence": 0.85-0.95
     }}
   ]
 }}
+```
 
-IMPORTANT: Include manufacturer and version info for:
-- GPUs: Intel GPU, AMD Radeon, NVIDIA GeForce, Adreno, Mali, PowerVR, Vivante, etc. + generation
-- CPUs: ARM Cortex (A72, A78, A53), Intel (Core, Xeon), AMD (Ryzen), etc.
-- NPUs: Coral, NVDLA, Qualcomm Hexagon, etc. + version
-- TPU: Google TPU v2/v3/v4, Edge TPU
-- Interconnects: MIPI CSI-2, MIPI DSI, with version numbers (CSI-6, CSI-7, CSI-8)
-- Sensors: By manufacturer (Bosch, Sony, Analog Devices, etc.)
-- Display: By technology and manufacturer
+===== EXTRACTION RULES =====
 
-Be thorough - include ALL component types and their specific variants."""
+1. COMPLETENESS: Include EVERY component visible in datasheet, even small passive ICs if named
+2. ACCURACY: Use exact model numbers from datasheet, not generic names
+3. MANUFACTURER: Always specify - crucial for compatibility and sourcing
+4. VERSIONS: Always include MIPI/USB/protocol versions when present
+5. CONNECTIONS: Specify HOW it connects (bus, protocol, direct pin)
+6. CONFIDENCE: 0.95+ for exact ICs found with model numbers, 0.75-0.85 for inferred types
+7. AVOID GENERICS: Don't add hypothetical components not mentioned in datasheet
+
+===== DUPLICATE HANDLING =====
+
+If same component appears multiple times (e.g., 2 identical USB ports):
+- Include ALL instances separately (they consume separate pins/address space)
+- Set instance count in description if applicable
+
+===== CRITICAL COMPLETENESS CHECKLIST =====
+
+Before finalizing, verify you found:
+- Main SoC/CPU (and its peripheral features)
+- All memory types (DRAM channel config, flash storage)
+- All communication buses (USB, Ethernet, WiFi, serial)
+- All sensors and peripherals
+- All power components (PMIC, regulators, connectors)
+- All security modules (TPM, secure elements)
+- All display/touchscreen controllers
+- All audio components (codec, amp, connectors)
+- System management (RTC, watchdog, ACPI indicators)
+- Debug interfaces (JTAG, SWD, UART headers)
+
+Return ONLY the JSON object. No explanations, no markdown backticks."""
 
     # Try providers in order
     result = None

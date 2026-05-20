@@ -70,6 +70,28 @@ _KNOWN_COMPONENTS = {
     "vpu": ("npu", "pcie"),
     "dsp": ("dsp", "local"),
     "cpu": ("cpu", "local"),
+    # Audio components
+    "rt5651": ("audio", "i2c"),
+    "rt5640": ("audio", "i2c"),
+    "wm8960": ("audio", "i2c"),
+    "da7213": ("audio", "i2c"),
+    "ssm3515": ("audio", "i2c"),
+    "realtek": ("audio", "i2c"),
+    "cirrus": ("audio", "i2c"),
+    # Security/TPM components
+    "tpm2": ("security", "i2c"),
+    "tpm1.2": ("security", "i2c"),
+    "se050": ("security", "i2c"),
+    "tpm_infineon": ("security", "i2c"),
+    "tpm_st": ("security", "i2c"),
+    # Power management
+    "axp803": ("power", "i2c"),
+    "axp809": ("power", "i2c"),
+    "max77686": ("power", "i2c"),
+    "bd71847": ("power", "i2c"),
+    "pf8100": ("power", "i2c"),
+    # Watchdog
+    "wdt": ("watchdog", "i2c"),
 }
 
 # Connection type keywords for context inference
