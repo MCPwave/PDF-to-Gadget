@@ -1,13 +1,15 @@
 """
-@librarian — Hardware Librarian Agent
+@librarian — Hardware Librarian Agent (LLM-Based Detection)
 Extracts SoC details, peripherals, pinmux, and power rails from datasheet text.
-Supports internet enrichment via Wikipedia API and a built-in SoC knowledge base.
+Uses AI agents (LLM) as PRIMARY detection method with full context understanding.
 
-LLM priority order:
+LLM priority order (intelligent detection):
   1. Ollama  (local)       — OLLAMA_HOST (default: http://localhost:11434)
   2. LM Studio (local)     — LM_STUDIO_HOST (default: http://localhost:1234)
   3. Cloud providers       — OpenAI / Anthropic / Gemini / Groq / Mistral / OpenRouter
-  4. Heuristic regex       — always available, no key needed
+
+Note: NO heuristic regex fallback - LLM agents handle all detection to preserve context
+and extract detailed specifications (resolution, features, versions, manufacturer).
 """
 import json
 import os
@@ -307,231 +309,115 @@ def _merge_hw_maps(base: dict, extra: dict) -> dict:
 
 def extract_components_from_pdf(pdf_text: str) -> list[dict]:
     """
-    Extract components (ICs, sensors, peripherals) from PDF text.
+    Extract components (ICs, sensors, peripherals) from PDF text using LLM agents.
     
-    Extraction priority (tries in order):
-    1. LLM detection (if available) — most comprehensive
-    2. IC matching (ic_matcher.match_component_ics) — known ICs
-    3. Generic extraction (generic_ic_extractor) — unknown ICs
-    4. Keyword detection (fallback)
+    AGENT-FIRST APPROACH: Uses intelligent LLM detection as the ONLY primary method.
+    No regex/heuristic fallbacks - LLM preserves full context for accurate extraction.
     
-    Merges results with deduplication by IC name.
+    For example, detects:
+    - "CAMERA FHD (1080p) webcam Windows Hello compliant, Intel IPU6"
+    - Instead of just "camera" from regex, extracts: resolution, features, IPU details, manufacturer
     
     Args:
         pdf_text: Extracted text from PDF
         
     Returns:
-        List of component dicts with schema:
+        List of component dicts with full context and specifications:
         {
-            "id": "camera_ov5647_0",
-            "name": "OV5647 Camera Module",
+            "id": "camera_ipu6_0",
+            "name": "FHD Webcam with IPU6",
             "type": "camera",
+            "manufacturer": "Intel",
+            "model_number": "IPU6",
+            "variant": "FHD 1080p Webcam with Windows Hello IR",
+            "version": "IPU6 Gen 2",
+            "connection": "usb",
+            "connection_version": "USB Video Class 1.5",
+            "resolution": "FHD (1080p)",
+            "features": ["Windows Hello", "Express Sign-In", "Infrared biometric"],
+            "description": "FHD (1080p) USB webcam with Windows Hello IR support...",
             "is_component": True,
             "component_ic": {
-                "name": "OV5647",
-                "vendor": "OmniVision",
-                "type": "camera_sensor"
+                "name": "IPU6",
+                "vendor": "Intel",
+                "type": "image_processor"
             },
-            "connection_type": "mipi_csi",
-            "source": "llm|ic_match|generic|keyword",
-            "confidence": 0.9
+            "connection_type": "usb",
+            "source": "llm",
+            "confidence": 0.95
         }
     """
     if not pdf_text or not pdf_text.strip():
         return []
     
-    components_by_ic = {}  # ic_name -> component dict
+    components_list = []
     
-    # ===== TRY 1: LLM Detection (most comprehensive) =====
+    # ===== AGENT-BASED DETECTION (LLM Only) =====
     if detect_components_with_llm:
         try:
             llm_components, model_used = detect_components_with_llm(pdf_text)
-            if llm_components and format_components_for_pipeline:
-                formatted = format_components_for_pipeline(llm_components)
-                for comp in formatted:
-                    ic_name = comp.get("component_ic", {}).get("name", "").lower()
-                    if ic_name:
-                        components_by_ic[ic_name] = comp
-                    else:
-                        # Use name as ID if no IC model
-                        comp_id = f"component_{comp.get('name', 'unknown').lower().replace(' ', '_')}_{len(components_by_ic)}"
-                        comp["id"] = comp_id
-                        components_by_ic[comp_id] = comp
-        except Exception as e:
-            pass  # Fall through to heuristic methods
-    
-    # ===== TRY 2: IC Matching (known ICs database) =====
-    if match_component_ics:
-        try:
-            ic_matches = match_component_ics(pdf_text)
-            for ic_match in ic_matches:
-                # Convert ICMatch object to dict if needed
-                if hasattr(ic_match, 'to_dict'):
-                    match_dict = ic_match.to_dict()
+            if llm_components:
+                if format_components_for_pipeline:
+                    formatted = format_components_for_pipeline(llm_components)
+                    for comp in formatted:
+                        # Preserve ALL extracted fields from LLM
+                        component_dict = {
+                            "id": f"component_{comp.get('name', 'unknown').lower().replace(' ', '_')}_{len(components_list)}",
+                            "name": comp.get("name", "Unknown"),
+                            "type": comp.get("type", "other"),
+                            "manufacturer": comp.get("manufacturer", ""),
+                            "model_number": comp.get("model_number", ""),
+                            "variant": comp.get("variant", ""),
+                            "version": comp.get("version", ""),
+                            "connection": comp.get("connection", ""),
+                            "connection_version": comp.get("connection_version", ""),
+                            "voltage": comp.get("voltage", ""),
+                            "description": comp.get("description", ""),
+                            "confidence": comp.get("confidence", 0.8),
+                            "is_component": True,
+                            "source": "llm",
+                            "model_used": model_used
+                        }
+                        
+                        # Add IC details
+                        ic_name = comp.get("model_number", "").lower() or comp.get("name", "").lower()
+                        if ic_name:
+                            component_dict["component_ic"] = {
+                                "name": ic_name.upper(),
+                                "vendor": comp.get("manufacturer", "Unknown"),
+                                "type": comp.get("type", "unknown")
+                            }
+                        
+                        # Map connection to type
+                        connection_map = {
+                            "mipi_csi": "mipi_csi",
+                            "mipi_dsi": "mipi_dsi",
+                            "i2c": "i2c",
+                            "spi": "spi",
+                            "usb": "usb",
+                            "uart": "uart",
+                            "pcie": "pcie",
+                            "ethernet": "ethernet"
+                        }
+                        component_dict["connection_type"] = connection_map.get(comp.get("connection", ""), comp.get("connection", ""))
+                        
+                        components_list.append(component_dict)
                 else:
-                    match_dict = ic_match if isinstance(ic_match, dict) else ic_match.__dict__
-                
-                ic_name = match_dict.get("ic_name", "").lower()
-                if not ic_name:
-                    continue
-                
-                # Generate component ID from IC name
-                comp_id = f"component_{ic_name}_{len(components_by_ic)}"
-                
-                # Extract vendor from known ICs
-                vendor_map = {
-                    "ov5647": "OmniVision",
-                    "imx219": "Sony",
-                    "imx477": "Sony",
-                    "ar0521": "ON Semiconductor",
-                    "ili9341": "Ilitek",
-                    "st7789": "Sitronix",
-                    "st7735": "Sitronix",
-                    "ft5406": "Focaltech",
-                    "bmp280": "Bosch",
-                    "tmp36": "Analog Devices",
-                    "mpu6050": "InvenSense",
-                    "ads1015": "Texas Instruments",
-                    "ads1115": "Texas Instruments",
-                }
-                vendor = vendor_map.get(ic_name, "Unknown")
-                
-                component = {
-                    "id": comp_id,
-                    "name": f"{ic_name.upper()} Component",
-                    "type": match_dict.get("component_type", "sensor"),
-                    "is_component": True,
-                    "component_ic": {
-                        "name": ic_name.upper(),
-                        "vendor": vendor,
-                        "type": match_dict.get("component_type", "unknown")
-                    },
-                    "connection_type": match_dict.get("connection_type", "unknown"),
-                    "connector": {
-                        "pins": [],
-                        "voltage": "3.3V",
-                        "required_board_interface": None
-                    },
-                    "source": "ic_match",
-                    "confidence": match_dict.get("confidence", 0.5),
-                    "context": match_dict.get("context", "")
-                }
-                
-                # Store by IC name for deduplication
-                if ic_name not in components_by_ic:
-                    components_by_ic[ic_name] = component
-                else:
-                    # Prefer higher confidence match
-                    if match_dict.get("confidence", 0) > components_by_ic[ic_name].get("confidence", 0):
-                        components_by_ic[ic_name] = component
+                    components_list.extend(llm_components)
         except Exception as e:
-            print(f"[extract_components_from_pdf] IC matching error: {e}")
+            # IMPORTANT: Don't silently fall back to regex
+            # Log error but continue - agent-based detection failed
+            print(f"⚠️  LLM component detection failed: {str(e)[:200]}")
+            # Return empty rather than degrade to heuristic
+            return components_list
+    else:
+        # No LLM agent available
+        return components_list
     
-    # 2. Keyword Detection (for additional context, only as fallback)
-    if detect_component_keywords:
-        try:
-            keyword_matches = detect_component_keywords(pdf_text)
-            
-            # Track component types we already have from IC matches
-            # Map keywords to full component types
-            type_mapping = {
-                "camera": ["camera_sensor", "camera"],
-                "sensor": ["camera_sensor", "sensor_temperature", "sensor_accelerometer", "sensor_proximity", "sensor_light"],
-                "display": ["display"],
-                "touchscreen": ["touchscreen"],
-                "audio": ["audio_codec", "amplifier", "microphone", "speaker"],
-                "wifi": ["wifi"],
-                "bluetooth": ["bluetooth"],
-                "nfc": ["nfc"],
-                "modem": ["modem"],
-                "gps": ["gps"],
-                "temperature": ["sensor_temperature"],
-                "accelerometer": ["sensor_accelerometer"],
-                "gyro": ["sensor_accelerometer"],
-                "compass": ["magnetometer"],
-                "pressure": ["sensor_temperature"],
-                "light": ["sensor_light"],
-            }
-            
-            existing_types = {
-                comp.get("component_ic", {}).get("type", "").lower()
-                for comp in components_by_ic.values()
-            }
-            
-            for match in keyword_matches:
-                keyword = match.get("keyword", "").lower()
-                if not keyword or keyword == "other":
-                    continue
-                
-                # Only use keyword if it's marked as component type
-                if match.get("section_type") != "component":
-                    continue
-                
-                # Skip if we already have a component that matches this keyword type
-                mapped_types = type_mapping.get(keyword, [keyword])
-                if any(t in existing_types for t in mapped_types):
-                    continue
-                
-                # Use keyword to create component if not already found
-                comp_id = f"component_{keyword}_{len(components_by_ic)}"
-                if keyword not in components_by_ic:
-                    component = {
-                        "id": comp_id,
-                        "name": f"{keyword.title()} Component",
-                        "type": keyword,
-                        "is_component": True,
-                        "component_ic": {
-                            "name": keyword.upper(),
-                            "vendor": "Unknown",
-                            "type": keyword
-                        },
-                        "connection_type": "unknown",
-                        "connector": {
-                            "pins": [],
-                            "voltage": "3.3V",
-                            "required_board_interface": None
-                        },
-                        "source": "keyword_detection",
-                        "confidence": 0.4,
-                        "context": match.get("context", "")
-                    }
-                    components_by_ic[keyword] = component
-        except Exception as e:
-            print(f"[extract_components_from_pdf] Keyword detection error: {e}")
-    
-    # 3. Connector Parsing (if available)
-    if parse_connector_pins:
-        try:
-            # Try to extract connector sections and parse pins
-            connector_sections = re.findall(
-                r"(connector|pinout|pin map|pin configuration)[\s\S]{0,1000}?(?=\n\n|\Z)",
-                pdf_text,
-                re.IGNORECASE
-            )
-            for section in connector_sections:
-                try:
-                    pins = parse_connector_pins(section)
-                    if pins and len(components_by_ic) > 0:
-                        # Apply pins to most recently added component
-                        last_comp = list(components_by_ic.values())[-1]
-                        if last_comp.get("connector"):
-                            last_comp["connector"]["pins"] = pins
-                except Exception:
-                    pass
-        except Exception as e:
-            print(f"[extract_components_from_pdf] Connector parsing error: {e}")
-    
-    # Convert dict values to list and remove internal fields
-    components = []
-    for comp in components_by_ic.values():
-        # Remove internal 'context' field
-        if "context" in comp:
-            del comp["context"]
-        components.append(comp)
-    
-    return components
+    return components_list
 
 
+# DEPRECATED: Old heuristic-based extraction (kept for reference)
 def merge_hardware_maps(maps_list: list[dict]) -> dict:
     """
     Merge multiple hardware_map dicts from different PDFs.

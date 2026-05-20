@@ -180,8 +180,11 @@ Datasheet excerpt:
 
 4. CAMERA & VIDEO INTERFACES (Priority HIGH)
    - CSI: MIPI CSI-2 (versions 6, 7, 8, 9), lanes (2/4), speeds
-   - Sensor ICs: Sony IMX (IMX477, IMX219, IMX477R), OmniVision OV (OV5640, OV8856), Arducam, GalaxyCore GC
-   - Connectors: Flex cable, ribbon connectors, BNC for CVBS
+   - Sensor ICs: Sony IMX (IMX477, IMX219, IMX477R, IMX500), OmniVision OV (OV5640, OV8856), Arducam, GalaxyCore GC
+   - Webcam: FHD (1080p), 4K, 2K resolutions, USB webcams, Windows Hello compatibility
+   - Image Processing: Intel IPU (IPU6, IPU5), Qualcomm ISP, image signal processors
+   - Features: Auto-focus, face detection, depth sensing, IR sensors
+   - Connectors: Flex cable, ribbon connectors, BNC for CVBS, USB for webcams
 
 5. DISPLAY & TOUCHSCREEN (Priority HIGH)
    - DSI: MIPI DSI versions, lane count, dual DSI
@@ -244,7 +247,21 @@ Datasheet excerpt:
     - Cache RAM: amount, speed
     - EEPROM: size, purpose (MAC address, calibration)
 
+13. IMAGE PROCESSING (Priority HIGH - Often Missed!)
+    - IPU: Intel IPU (IPU6, IPU5, IPU4), Qualcomm ISP, MediaTek, ARM
+    - ISP: Image Signal Processors with specific versions
+    - Camera Features: FHD/4K resolution support, video encoding (H.264, H.265, VP9)
+    - Biometric: Depth sensors, IR for face detection, Windows Hello/Hello IR support
+    - AI Accelerators for Camera: On-die or separate AI engines for image processing
+    - Webcam Features: USB webcams with specific resolution (1080p/2K/4K), audio (built-in mic)
+
 ===== COMPONENT REFERENCE EXAMPLES =====
+
+Image Processing Units:
+  Intel: IPU6, IPU5, IPU4 (with specific camera pipeline capabilities)
+  Qualcomm: ISP with Snapdragon variants
+  MediaTek: ISP in MT series SoCs
+  ARM: ISP in Mali/Cortex variants
 
 Audio Codecs by Manufacturer:
   Realtek: ALC5640, ALC5651, ALC892, ALC1220
@@ -285,20 +302,41 @@ Return ONLY valid JSON (no markdown, no code fences). Use this structure:
   "components": [
     {{
       "name": "Exact component name or model",
-      "type": "cpu|gpu|npu|tpu|dsp|camera|display|touchscreen|audio|sensor_temperature|sensor_accelerometer|sensor_light|sensor_proximity|sensor_pressure|sensor_humidity|pmic|power|security|uart|i2c|spi|usb|ethernet|mipi_csi|mipi_dsi|gpio|rtc|watchdog|led|other",
-      "model_number": "Exact IC/part number (e.g., RTL8211E, ALC5640)",
-      "manufacturer": "Company name (Realtek, Goodix, Qualcomm, etc.)",
-      "version": "Generation/revision (e.g., v2.0, Gen 4, CSI-2 v1.3)",
-      "variant": "Specific model variant (e.g., RTL8211E-VB)",
+      "type": "cpu|gpu|npu|tpu|dsp|camera|display|touchscreen|audio|sensor_temperature|sensor_accelerometer|sensor_light|sensor_proximity|sensor_pressure|sensor_humidity|pmic|power|security|uart|i2c|spi|usb|ethernet|mipi_csi|mipi_dsi|gpio|rtc|watchdog|led|ipu|other",
+      "model_number": "Exact IC/part number (e.g., RTL8211E, ALC5640, IPU6, IMX477)",
+      "manufacturer": "Company name (Intel, Sony, OmniVision, Realtek, etc.)",
+      "version": "Generation/revision (e.g., v2.0, Gen 4, CSI-2 v1.3, IPU6 Gen 2)",
+      "variant": "Specific model variant with specs (e.g., FHD Webcam, 1080p, RTL8211E-VB, MIPI CSI-2)",
       "connection": "How it connects to main SoC: i2c|spi|uart|gpio|mipi_csi|mipi_dsi|usb|pcie|hdmi|displayport|local|ethernet|other",
-      "connection_version": "Protocol version (e.g., I2C 7.0, USB 3.1, MIPI CSI-2 v1.3)",
+      "connection_version": "Protocol version (e.g., I2C 7.0, USB 3.1, MIPI CSI-2 v1.3, USB Video Class 1.5)",
       "voltage": "Operating voltage (3.3V, 1.8V, 1.2V)",
-      "description": "1-sentence description of function/role",
+      "description": "Detailed description including key specifications: For CAMERAS - resolution (FHD/1080p/4K), type (webcam/sensor), features (Windows Hello, IR, face detection, IPU details). For AUDIO - codec type, channels, sample rate. For DISPLAYS - panel tech, resolution. For SECURITY - TPM version, type.",
       "confidence": 0.85-0.95
     }}
   ]
 }}
 ```
+
+===== CAMERA COMPONENT EXTRACTION RULES (Critical!) =====
+
+When you find ANY camera, webcam, or image processing mention, EXTRACT:
+1. Resolution: FHD (1080p), 4K, 2K, QVGA, VGA - put in "variant" field
+2. Type: Webcam, CSI Sensor, MIPI connector, USB - clarify in description
+3. Features: Windows Hello, Express Sign-In, IR (infrared), face detection, biometric - include in description
+4. IPU/ISP Details: Intel IPU6, IPU5, Qualcomm ISP, image processor - MUST be in model_number or variant
+5. Connection: USB (for webcams), MIPI CSI (for sensors), parallel RGB - specify in connection field
+6. Manufacturer: Intel (IPU), Sony (IMX sensors), OmniVision (OV sensors), etc.
+
+EXAMPLES:
+- "CAMERA FHD (1080p) webcam Windows Hello compliant, Express Sign-In, Intel IPU6"
+  → name: "FHD Webcam with IPU6"
+     type: "camera"
+     model_number: "IPU6"
+     manufacturer: "Intel"
+     version: "IPU6 Gen 2" (if mentioned)
+     variant: "FHD 1080p Webcam with Windows Hello IR"
+     connection: "usb"
+     description: "FHD (1080p) USB webcam with Windows Hello biometric support (infrared), Express Sign-In compatible, integrated Intel IPU6 image processor"
 
 ===== EXTRACTION RULES =====
 

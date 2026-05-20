@@ -26,6 +26,9 @@ _COMPONENT_TYPES = {
         r'\bcamera\b', r'\bimage\s*sensor\b', r'\bcmos\s*sensor\b',
         r'\bcamera\s*module\b', r'\bcamera\s*ic\b', r'\boptical\s*sensor\b',
         r'\bvideo\s*sensor\b', r'\bimage\s*sensor\b', r'\bphotograph',
+        r'\bwebcam\b', r'\bweb\s*camera\b', r'\bipu\b', r'\bipu\d+\b',
+        r'\bwindows\s*hello\b', r'\b1080p\b', r'\bfhd\b', r'\b4k\b', r'\b2k\b',
+        r'\bintel\s*ipu\b', r'\bqualcomm\s*isp\b', r'\bimage\s*processor\b',
     ],
     'display': [
         r'\bdisplay\b', r'\blcd\b', r'\boled\b', r'\bscreen\b',
@@ -129,6 +132,11 @@ _COMPONENT_TYPES = {
     ],
     'watchdog': [
         r'\bwatchdog\b', r'\bwdt\b', r'\btimer\b',
+    ],
+    'ipu': [
+        r'\bipu\b', r'\bipu\d+\b', r'\bimage\s*processing\s*unit\b',
+        r'\bintel\s*ipu\b', r'\bqualcomm\s*isp\b', r'\bvivid\b',
+        r'\bisp\b', r'\bimage\s*signal\s*processor\b',
     ],
 }
 

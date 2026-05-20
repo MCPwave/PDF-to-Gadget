@@ -92,6 +92,16 @@ _KNOWN_COMPONENTS = {
     "pf8100": ("power", "i2c"),
     # Watchdog
     "wdt": ("watchdog", "i2c"),
+    # Camera & IPU components
+    "ipu6": ("ipu", "local"),
+    "ipu5": ("ipu", "local"),
+    "ipu": ("ipu", "local"),
+    "isp": ("ipu", "local"),
+    "imx500": ("camera", "mipi_csi"),
+    "imx477": ("camera", "mipi_csi"),
+    "imx219": ("camera", "mipi_csi"),
+    "ov5640": ("camera", "mipi_csi"),
+    "ov8856": ("camera", "mipi_csi"),
 }
 
 # Connection type keywords for context inference
