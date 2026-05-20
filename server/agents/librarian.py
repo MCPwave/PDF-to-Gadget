@@ -33,6 +33,11 @@ try:
 except ImportError:
     parse_connector_pins = None
 
+try:
+    from soc_analyzer import classify_device
+except ImportError:
+    classify_device = None
+
 # ── Shared prompt builder ──────────────────────────────────────────────────────
 
 _PERIPHERAL_TYPES = (
