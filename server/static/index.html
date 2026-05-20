@@ -691,7 +691,22 @@
   .file-item .remove:hover { color: var(--canonical-orange); }
   
   /* validation results */
-  #validation-section { margin-top: 16px; display: none; }
+  #validation-section { 
+    margin-top: 16px; 
+    display: none;
+    max-height: 70vh;
+    overflow-y: auto;
+    padding-right: 8px;
+  }
+  #validation-section::-webkit-scrollbar { width: 8px; }
+  #validation-section::-webkit-scrollbar-track { background: transparent; }
+  #validation-section::-webkit-scrollbar-thumb { 
+    background: var(--border);
+    border-radius: 4px;
+  }
+  #validation-section::-webkit-scrollbar-thumb:hover { 
+    background: var(--muted);
+  }
   .validation-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
   .validation-header h3 { font-size: 14px; font-weight: 500; margin: 0; }
   .validation-summary {
@@ -1616,27 +1631,26 @@
     const validation = window._validationData || { conflicts: [] };
     const unresolved = validation.conflicts || [];
     
-    // Check if all conflicts have alternatives selected
-    let hasUnresolvedConflicts = false;
+    // Check if all conflicts with alternatives have one selected
+    let hasUnresolvedAlternatives = false;
     if (unresolved.length > 0) {
-      // For each conflict, check if it has alternatives and if one is selected
+      // For each conflict WITH alternatives, check if one is selected
       for (let i = 0; i < unresolved.length; i++) {
         const conflict = unresolved[i];
-        if (!conflict.alternatives || conflict.alternatives.length === 0) {
-          // No alternatives available - cannot proceed
-          hasUnresolvedConflicts = true;
-          break;
+        // Only require selection if alternatives exist
+        if (conflict.alternatives && conflict.alternatives.length > 0) {
+          const selected = document.querySelector(`input[name="conflict-${i}"]:checked`);
+          if (!selected) {
+            hasUnresolvedAlternatives = true;
+            break;
+          }
         }
-        // Check if an alternative is selected for this conflict
-        const selected = document.querySelector(`input[name="conflict-${i}"]:checked`);
-        if (!selected) {
-          hasUnresolvedConflicts = true;
-          break;
-        }
+        // NO SOLUTION conflicts (no alternatives) are allowed - continue with warning
       }
     }
     
-    document.getElementById('run-btn').disabled = !(sessionId && any && !hasUnresolvedConflicts);
+    // Enable RUN if: components selected + no unresolved alternatives + session exists
+    document.getElementById('run-btn').disabled = !(sessionId && any && !hasUnresolvedAlternatives);
   }
 
   function getSelectedIds() {
@@ -1661,8 +1675,20 @@
     document.getElementById('run-btn').disabled = true;
     clearTerminal();
     switchTab('terminal');
-    logMsg(`🚀 Starting pipeline — ${selected.length} component(s) selected` +
-           (Object.keys(alternatives).length > 0 ? ` + ${Object.keys(alternatives).length} alternative(s)` : ''));
+    
+    // Check for unresolved conflicts (NO SOLUTION cases)
+    const validation = window._validationData || { conflicts: [] };
+    const noSolutionCount = (validation.conflicts || [])
+      .filter(c => !c.alternatives || c.alternatives.length === 0).length;
+    
+    let msg = `🚀 Starting pipeline — ${selected.length} component(s) selected`;
+    if (Object.keys(alternatives).length > 0) {
+      msg += ` + ${Object.keys(alternatives).length} alternative(s)`;
+    }
+    if (noSolutionCount > 0) {
+      msg += ` ⚠️ (${noSolutionCount} with no solution — will proceed with defaults)`;
+    }
+    logMsg(msg);
 
     const resp = await fetch('/api/generate', {
       method:  'POST',
