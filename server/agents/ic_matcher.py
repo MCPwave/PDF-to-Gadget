@@ -59,6 +59,17 @@ _KNOWN_COMPONENTS = {
     "pcf8563": ("rtc", "i2c"),
     "apa102": ("led", "spi"),
     "ws2812": ("led", "spi"),
+    # Accelerators & Processors
+    "tpu": ("tpu", "pcie"),
+    "coral": ("npu", "usb"),
+    "tpu_v2": ("tpu", "pcie"),
+    "tpu_v3": ("tpu", "pcie"),
+    "tpu_v4": ("tpu", "pcie"),
+    "npu": ("npu", "pcie"),
+    "gpu": ("gpu", "pcie"),
+    "vpu": ("npu", "pcie"),
+    "dsp": ("dsp", "local"),
+    "cpu": ("cpu", "local"),
 }
 
 # Connection type keywords for context inference

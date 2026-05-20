@@ -80,6 +80,32 @@ _COMPONENT_TYPES = {
         r'\bled\s*driver\b', r'\bled\s*controller\b', r'\brgb\s*led\b',
         r'\bws2812\b', r'\baya102\b', r'\baddressable\s*led\b',
     ],
+    'npu': [
+        r'\bnpu\b', r'\bneural\s*processing\s*unit\b',
+        r'\bcoral\b', r'\btpu\b(?!v\d)', r'\baccelerator\b',
+        r'\bnvdla\b', r'\bkhan\b', r'\bvpu\b',
+    ],
+    'gpu': [
+        r'\bgpu\b', r'\bgraphics\s*processing\s*unit\b',
+        r'\badreno\b', r'\bmali\b', r'\bpowervr\b', r'\bvivante\b',
+        r'\bgc\d{3,4}\b', r'\bgpgpu\b',
+    ],
+    'tpu': [
+        r'\btpu\b', r'\btensor\s*processing\s*unit\b',
+        r'\bv\d\b', r'\bedge\s*tpu\b',
+    ],
+    'cpu': [
+        r'\bcpu\s*core\b', r'\bprocessor\s*core\b', r'\bcortex\b',
+        r'\barm\s*cpu\b', r'\bx86\b', r'\bx86_64\b',
+    ],
+    'dsp': [
+        r'\bdsp\b', r'\bdigital\s*signal\s*processor\b',
+        r'\bhexagon\b', r'\bc6x\b', r'\bc7x\b',
+    ],
+    'accelerator': [
+        r'\baccelerator\b', r'\bhardware\s*acceleration\b',
+        r'\bvpu\b', r'\bio\s*accelerator\b',
+    ],
 }
 
 # Connection type keywords
@@ -94,6 +120,8 @@ _CONNECTION_KEYWORDS = {
     'hdmi': [r'\bhdmi\b'],
     'ethernet': [r'\bethernet\b', r'\brj45\b'],
     'can': [r'\bcan\b', r'\bcontroller\s*area\b'],
+    'pcie': [r'\bpcie\b', r'\bpci\s*express\b', r'\bpci-?e\b'],
+    'local': [r'\blocal\b', r'\bintegrated\b', r'\bon-?chip\b', r'\binternal\b'],
 }
 
 
