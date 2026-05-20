@@ -38,6 +38,12 @@ try:
 except ImportError:
     classify_device = None
 
+try:
+    from llm_component_detector import detect_components_with_llm, format_components_for_pipeline
+except ImportError:
+    detect_components_with_llm = None
+    format_components_for_pipeline = None
+
 # ── Shared prompt builder ──────────────────────────────────────────────────────
 
 _PERIPHERAL_TYPES = (
@@ -303,10 +309,11 @@ def extract_components_from_pdf(pdf_text: str) -> list[dict]:
     """
     Extract components (ICs, sensors, peripherals) from PDF text.
     
-    Combines three extraction methods:
-    1. Keyword detection (component_extractor.detect_component_keywords)
-    2. IC matching (ic_matcher.match_component_ics)
-    3. Connector parsing (connector_parser.parse_connector_pins, if available)
+    Extraction priority (tries in order):
+    1. LLM detection (if available) — most comprehensive
+    2. IC matching (ic_matcher.match_component_ics) — known ICs
+    3. Generic extraction (generic_ic_extractor) — unknown ICs
+    4. Keyword detection (fallback)
     
     Merges results with deduplication by IC name.
     
@@ -326,12 +333,7 @@ def extract_components_from_pdf(pdf_text: str) -> list[dict]:
                 "type": "camera_sensor"
             },
             "connection_type": "mipi_csi",
-            "connector": {
-                "pins": ["CSI_D0", "CSI_D1", ...],
-                "voltage": "1.8V",
-                "required_board_interface": "MIPI_CSI0"
-            },
-            "source": "keyword_detection|ic_match|connector_parse",
+            "source": "llm|ic_match|generic|keyword",
             "confidence": 0.9
         }
     """
@@ -340,7 +342,25 @@ def extract_components_from_pdf(pdf_text: str) -> list[dict]:
     
     components_by_ic = {}  # ic_name -> component dict
     
-    # 1. IC Matching (most reliable)
+    # ===== TRY 1: LLM Detection (most comprehensive) =====
+    if detect_components_with_llm:
+        try:
+            llm_components, model_used = detect_components_with_llm(pdf_text)
+            if llm_components and format_components_for_pipeline:
+                formatted = format_components_for_pipeline(llm_components)
+                for comp in formatted:
+                    ic_name = comp.get("component_ic", {}).get("name", "").lower()
+                    if ic_name:
+                        components_by_ic[ic_name] = comp
+                    else:
+                        # Use name as ID if no IC model
+                        comp_id = f"component_{comp.get('name', 'unknown').lower().replace(' ', '_')}_{len(components_by_ic)}"
+                        comp["id"] = comp_id
+                        components_by_ic[comp_id] = comp
+        except Exception as e:
+            pass  # Fall through to heuristic methods
+    
+    # ===== TRY 2: IC Matching (known ICs database) =====
     if match_component_ics:
         try:
             ic_matches = match_component_ics(pdf_text)
