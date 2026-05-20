@@ -147,6 +147,7 @@ def detect_components_with_llm(
     """
     
     prompt = f"""Analyze this datasheet and extract ALL components, peripherals, and accelerators.
+Include detailed information about manufacturers, versions, and variants.
 
 Datasheet excerpt:
 {pdf_text[:5000]}
@@ -156,9 +157,13 @@ Return JSON with:
   "components": [
     {{
       "name": "Component name",
-      "type": "camera|display|sensor|npu|gpu|tpu|cpu|dsp|pmic|uart|i2c|spi|usb|ethernet|accelerator|other",
+      "type": "camera|display|sensor|npu|gpu|tpu|cpu|dsp|pmic|uart|i2c|spi|usb|ethernet|accelerator|mipi|other",
       "model_number": "IC model if available",
-      "connection": "mipi_csi|dsi|i2c|spi|usb|uart|gpio|hdmi|pcie|local|other",
+      "manufacturer": "Intel, AMD, NVIDIA, Bosch, Sony, OmniVision, etc.",
+      "version": "Version/generation (e.g., MIPI 7, Cortex-A78, Gen 4, v2, v3, v4)",
+      "variant": "Specific variant (e.g., MIPI CSI-2, Intel Iris Xe, NVIDIA GeForce RTX 4090)",
+      "connection": "mipi_csi|mipi_dsi|i2c|spi|usb|uart|gpio|hdmi|pcie|ethernet|local|other",
+      "connection_version": "Protocol version (e.g., CSI-2 v1.3, I2C v7.0)",
       "voltage": "3.3V or similar",
       "description": "Brief description",
       "confidence": 0.95
@@ -166,7 +171,16 @@ Return JSON with:
   ]
 }}
 
-Be thorough - include ALL component types: cameras, sensors, displays, NPUs, GPUs, TPUs, CPUs, DSPs, PMICs, interconnects, etc."""
+IMPORTANT: Include manufacturer and version info for:
+- GPUs: Intel GPU, AMD Radeon, NVIDIA GeForce, Adreno, Mali, PowerVR, Vivante, etc. + generation
+- CPUs: ARM Cortex (A72, A78, A53), Intel (Core, Xeon), AMD (Ryzen), etc.
+- NPUs: Coral, NVDLA, Qualcomm Hexagon, etc. + version
+- TPU: Google TPU v2/v3/v4, Edge TPU
+- Interconnects: MIPI CSI-2, MIPI DSI, with version numbers (CSI-6, CSI-7, CSI-8)
+- Sensors: By manufacturer (Bosch, Sony, Analog Devices, etc.)
+- Display: By technology and manufacturer
+
+Be thorough - include ALL component types and their specific variants."""
 
     # Try providers in order
     result = None
@@ -235,17 +249,42 @@ def format_components_for_pipeline(llm_components: List[Dict]) -> List[Dict]:
     formatted = []
     
     for comp in llm_components:
+        # Build display name with manufacturer and version
+        name_parts = [comp.get("name", "Unknown")]
+        
+        # Add manufacturer if available
+        manufacturer = comp.get("manufacturer", "").strip()
+        if manufacturer:
+            name_parts.append(f"({manufacturer})")
+        
+        # Add variant if available
+        variant = comp.get("variant", "").strip()
+        if variant:
+            name_parts.append(variant)
+        
+        # Add version if available
+        version = comp.get("version", "").strip()
+        if version:
+            name_parts.append(f"v{version}" if not version.startswith("v") else version)
+        
+        display_name = " ".join(name_parts)
+        
         formatted.append({
             "id": f"component_{comp.get('model_number', comp.get('name', 'unknown')).lower().replace(' ', '_')}",
-            "name": comp.get("name", "Unknown"),
+            "name": display_name,
             "type": comp.get("type", "other"),
             "component_ic": {
                 "name": comp.get("model_number", ""),
+                "vendor": manufacturer,
                 "type": comp.get("type", "unknown"),
             },
             "connection_type": comp.get("connection", "unknown"),
+            "connection_version": comp.get("connection_version", ""),
             "voltage": comp.get("voltage", ""),
             "description": comp.get("description", ""),
+            "manufacturer": manufacturer,
+            "version": version,
+            "variant": variant,
             "source": "llm_detection",
             "confidence": comp.get("confidence", 0.8),
             "is_component": True,

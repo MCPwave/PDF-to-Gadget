@@ -1587,9 +1587,22 @@
       const icName = p.component_ic?.name || p.ic || (p.name.includes('(') ? p.name.substring(p.name.indexOf('(') + 1, p.name.indexOf(')')) : '');
       if (icName) tableHtml += `<tr><td>IC:</td><td>${icName}</td></tr>`;
       
-      // Connection type
+      // Manufacturer (from LLM detection)
+      const manufacturer = p.manufacturer || p.component_ic?.vendor || '';
+      if (manufacturer) tableHtml += `<tr><td>Mfg:</td><td>${manufacturer}</td></tr>`;
+      
+      // Version/Generation
+      const version = p.version || '';
+      if (version) tableHtml += `<tr><td>Version:</td><td>${version}</td></tr>`;
+      
+      // Variant (specific model)
+      const variant = p.variant || '';
+      if (variant) tableHtml += `<tr><td>Variant:</td><td>${variant}</td></tr>`;
+      
+      // Connection type + version
       const connType = p.connection_type || p.bus || '';
-      if (connType) tableHtml += `<tr><td>Connection:</td><td>${connType}</td></tr>`;
+      const connVersion = p.connection_version || '';
+      if (connType) tableHtml += `<tr><td>Connection:</td><td>${connType}${connVersion ? ` (${connVersion})` : ''}</td></tr>`;
       
       // Address (if applicable)
       if (p.address && p.address !== 'null') tableHtml += `<tr><td>Address:</td><td>${p.address}</td></tr>`;
