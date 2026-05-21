@@ -199,8 +199,34 @@ Rules: 1) Exact part #s only 2) Include all ICs 3) Cameras: resolution, features
     # 1. Try Ollama (local first)
     if not provider or provider == "ollama":
         try:
-            result, model_used = _try_ollama(prompt)
-            return result.get("components", []), f"ollama/{model_used}"
+            host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+            ollama_model = model or os.getenv("OLLAMA_MODEL", "")
+            if not ollama_model:
+                models = _ollama_list_models(host)
+                if not models:
+                    raise RuntimeError("ollama_no_models")
+                preferred = ["mistral", "llama2", "neural-chat", "orca", "gemma"]
+                ollama_model = next(
+                    (m for pref in preferred for m in models if pref in m.lower()),
+                    models[0],
+                )
+            raw = _ollama_chat(host, ollama_model, prompt)
+            # Parse JSON response (Ollama returns string)
+            try:
+                result = json.loads(raw)
+            except:
+                # Try extracting JSON from markdown or text
+                match = re.search(r'```(?:json)?\s*(\{[^`]*\})\s*```', raw, re.DOTALL)
+                if match:
+                    result = json.loads(match.group(1))
+                else:
+                    start = raw.find('{')
+                    end = raw.rfind('}')
+                    if start != -1 and end != -1:
+                        result = json.loads(raw[start:end+1])
+                    else:
+                        raise ValueError(f"No JSON found in: {raw[:200]}")
+            return result.get("components", []), f"ollama/{ollama_model}"
         except Exception as e:
             if provider == "ollama":
                 raise

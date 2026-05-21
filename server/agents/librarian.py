@@ -327,24 +327,7 @@ def extract_components_from_pdf(pdf_text: str) -> list[dict]:
             "id": "camera_ipu6_0",
             "name": "FHD Webcam with IPU6",
             "type": "camera",
-            "manufacturer": "Intel",
-            "model_number": "IPU6",
-            "variant": "FHD 1080p Webcam with Windows Hello IR",
-            "version": "IPU6 Gen 2",
-            "connection": "usb",
-            "connection_version": "USB Video Class 1.5",
-            "resolution": "FHD (1080p)",
-            "features": ["Windows Hello", "Express Sign-In", "Infrared biometric"],
-            "description": "FHD (1080p) USB webcam with Windows Hello IR support...",
-            "is_component": True,
-            "component_ic": {
-                "name": "IPU6",
-                "vendor": "Intel",
-                "type": "image_processor"
-            },
-            "connection_type": "usb",
-            "source": "llm",
-            "confidence": 0.95
+            ...
         }
     """
     if not pdf_text or not pdf_text.strip():
@@ -352,67 +335,87 @@ def extract_components_from_pdf(pdf_text: str) -> list[dict]:
     
     components_list = []
     
-    # ===== AGENT-BASED DETECTION (LLM Only) =====
+    # ===== AGENT-BASED DETECTION (LLM Only, with timeout) =====
     if detect_components_with_llm:
         try:
-            llm_components, model_used = detect_components_with_llm(pdf_text)
-            if llm_components:
-                if format_components_for_pipeline:
-                    formatted = format_components_for_pipeline(llm_components)
-                    for comp in formatted:
-                        # Preserve ALL extracted fields from LLM
-                        component_dict = {
-                            "id": f"component_{comp.get('name', 'unknown').lower().replace(' ', '_')}_{len(components_list)}",
-                            "name": comp.get("name", "Unknown"),
-                            "type": comp.get("type", "other"),
-                            "manufacturer": comp.get("manufacturer", ""),
-                            "model_number": comp.get("model_number", ""),
-                            "variant": comp.get("variant", ""),
-                            "version": comp.get("version", ""),
-                            "connection": comp.get("connection", ""),
-                            "connection_version": comp.get("connection_version", ""),
-                            "voltage": comp.get("voltage", ""),
-                            "description": comp.get("description", ""),
-                            "confidence": comp.get("confidence", 0.8),
-                            "is_component": True,
-                            "source": "llm",
-                            "model_used": model_used
-                        }
-                        
-                        # Add IC details
-                        ic_name = comp.get("model_number", "").lower() or comp.get("name", "").lower()
-                        if ic_name:
-                            component_dict["component_ic"] = {
-                                "name": ic_name.upper(),
-                                "vendor": comp.get("manufacturer", "Unknown"),
-                                "type": comp.get("type", "unknown")
+            import signal
+            
+            def timeout_handler(signum, frame):
+                raise TimeoutError("Component detection exceeded 15s")
+            
+            # Set 15s timeout for component detection
+            signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(15)
+            
+            try:
+                llm_components, model_used = detect_components_with_llm(pdf_text)
+                signal.alarm(0)  # Cancel alarm
+                
+                if llm_components:
+                    if format_components_for_pipeline:
+                        formatted = format_components_for_pipeline(llm_components)
+                        for comp in formatted:
+                            # Preserve ALL extracted fields from LLM
+                            component_dict = {
+                                "id": f"component_{comp.get('name', 'unknown').lower().replace(' ', '_')}_{len(components_list)}",
+                                "name": comp.get("name", "Unknown"),
+                                "type": comp.get("type", "other"),
+                                "manufacturer": comp.get("manufacturer", ""),
+                                "model_number": comp.get("model_number", ""),
+                                "variant": comp.get("variant", ""),
+                                "version": comp.get("version", ""),
+                                "connection": comp.get("connection", ""),
+                                "connection_version": comp.get("connection_version", ""),
+                                "voltage": comp.get("voltage", ""),
+                                "description": comp.get("description", ""),
+                                "confidence": comp.get("confidence", 0.8),
+                                "is_component": True,
+                                "source": "llm",
+                                "model_used": model_used
                             }
-                        
-                        # Map connection to type
-                        connection_map = {
-                            "mipi_csi": "mipi_csi",
-                            "mipi_dsi": "mipi_dsi",
-                            "i2c": "i2c",
-                            "spi": "spi",
-                            "usb": "usb",
-                            "uart": "uart",
-                            "pcie": "pcie",
-                            "ethernet": "ethernet"
-                        }
-                        component_dict["connection_type"] = connection_map.get(comp.get("connection", ""), comp.get("connection", ""))
-                        
-                        components_list.append(component_dict)
-                else:
+                            
+                            # Add IC details
+                            ic_name = comp.get("model_number", "").lower() or comp.get("name", "").lower()
+                            if ic_name:
+                                component_dict["component_ic"] = {
+                                    "name": ic_name.upper(),
+                                    "vendor": comp.get("manufacturer", "Unknown"),
+                                    "type": comp.get("type", "unknown")
+                                }
+                            
+                            # Map connection to type
+                            connection_map = {
+                                "mipi_csi": "mipi_csi",
+                                "mipi_dsi": "mipi_dsi",
+                                "i2c": "i2c",
+                                "spi": "spi",
+                                "usb": "usb",
+                                "uart": "uart",
+                                "pcie": "pcie",
+                                "ethernet": "ethernet"
+                            }
+                            component_dict["connection_type"] = connection_map.get(comp.get("connection", ""), comp.get("connection", ""))
+                            
+                            components_list.append(component_dict)
+                    else:
+                        components_list.extend(llm_components)
+            except TimeoutError:
+                signal.alarm(0)
+                print(f"⚠️  Component detection timed out (>15s)")
+            except Exception as e:
+                signal.alarm(0)
+                print(f"⚠️  LLM component detection failed: {str(e)[:200]}")
+        except ImportError:
+            # signal module not available, skip timeout
+            try:
+                llm_components, model_used = detect_components_with_llm(pdf_text)
+                if llm_components and format_components_for_pipeline:
+                    formatted = format_components_for_pipeline(llm_components)
+                    components_list.extend(formatted)
+                elif llm_components:
                     components_list.extend(llm_components)
-        except Exception as e:
-            # IMPORTANT: Don't silently fall back to regex
-            # Log error but continue - agent-based detection failed
-            print(f"⚠️  LLM component detection failed: {str(e)[:200]}")
-            # Return empty rather than degrade to heuristic
-            return components_list
-    else:
-        # No LLM agent available
-        return components_list
+            except Exception as e:
+                print(f"⚠️  LLM component detection failed: {str(e)[:200]}")
     
     return components_list
 
