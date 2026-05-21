@@ -307,6 +307,101 @@ def _merge_hw_maps(base: dict, extra: dict) -> dict:
 
 # ── Component Extraction ──────────────────────────────────────────────────────────
 
+def _fast_component_extraction(pdf_text: str) -> list[dict]:
+    """
+    Quick keyword-based component extraction (fallback while LLM is slow).
+    Detects cameras, GPUs, audio, displays, sensors by simple pattern matching.
+    """
+    components = []
+    import re
+    
+    # Camera patterns
+    camera_patterns = [
+        (r"(?:fhd|hd|2k|4k|1080p|2160p|720p).*?(?:camera|webcam|ipu|csi|mipi)", "Camera"),
+        (r"(?:webcam|web camera).*?(?:fhd|hd|1080|2k|4k)", "Webcam"),
+        (r"windows\s+hello.*?(?:camera|webcam|ipu)", "Windows Hello Camera"),
+        (r"ipu\d+.*?(?:camera|imaging|processor)", "IPU Camera"),
+    ]
+    
+    # GPU patterns
+    gpu_patterns = [
+        (r"nvidia.*?(?:rtx|gtx|geforce|tesla|a\d{2})", "NVIDIA GPU"),
+        (r"amd.*?(?:radeon|rx|mi\d{2})", "AMD GPU"),
+        (r"intel.*?(?:iris|arc|a\d{3})", "Intel GPU"),
+        (r"\bgpu\b.*?graphics", "GPU"),
+    ]
+    
+    # Audio patterns
+    audio_patterns = [
+        (r"audio.*?(?:codec|amplifier|dsp|controller)", "Audio Codec"),
+        (r"(?:microphone|mic).*?array", "Microphone Array"),
+    ]
+    
+    # Display patterns
+    display_patterns = [
+        (r"(?:lcd|oled).*?display", "Display Panel"),
+        (r"touchscreen", "Touchscreen"),
+    ]
+    
+    # Security patterns
+    security_patterns = [
+        (r"tpm\d+", "TPM"),
+        (r"fingerprint.*?sensor", "Fingerprint Sensor"),
+    ]
+    
+    text_lower = pdf_text.lower()
+    found_comps = {}
+    
+    for pattern, name in camera_patterns:
+        if re.search(pattern, text_lower):
+            if "camera" not in found_comps:
+                found_comps["camera"] = {"name": name, "type": "camera"}
+    
+    for pattern, name in gpu_patterns:
+        if re.search(pattern, text_lower):
+            if "gpu" not in found_comps:
+                found_comps["gpu"] = {"name": name, "type": "gpu"}
+    
+    for pattern, name in audio_patterns:
+        if re.search(pattern, text_lower):
+            if "audio" not in found_comps:
+                found_comps["audio"] = {"name": name, "type": "audio"}
+    
+    for pattern, name in display_patterns:
+        if re.search(pattern, text_lower):
+            key = f"display_{len(found_comps)}"
+            if key not in found_comps:
+                found_comps[key] = {"name": name, "type": "display" if "touchscreen" not in name.lower() else "touchscreen"}
+    
+    for pattern, name in security_patterns:
+        if re.search(pattern, text_lower):
+            key = f"security_{len(found_comps)}"
+            if key not in found_comps:
+                found_comps[key] = {"name": name, "type": "security"}
+    
+    # Build component dicts
+    for i, (key, comp) in enumerate(found_comps.items()):
+        component_dict = {
+            "id": f"component_{comp['type']}_{i}",
+            "name": comp["name"],
+            "type": comp["type"],
+            "manufacturer": "",
+            "model_number": "",
+            "confidence": 0.65,
+            "is_component": True,
+            "source": "heuristic",
+            "description": comp["name"],
+            "component_ic": {
+                "name": comp["name"].upper().replace(" ", "_"),
+                "vendor": "Unknown",
+                "type": comp["type"]
+            },
+        }
+        components.append(component_dict)
+    
+    return components
+
+
 def extract_components_from_pdf(pdf_text: str) -> list[dict]:
     """
     Extract components (ICs, sensors, peripherals) from PDF text using LLM agents.
@@ -416,6 +511,15 @@ def extract_components_from_pdf(pdf_text: str) -> list[dict]:
                     components_list.extend(llm_components)
             except Exception as e:
                 print(f"⚠️  LLM component detection failed: {str(e)[:200]}")
+    
+    # If LLM didn't find components, try fast heuristic extraction
+    if not components_list:
+        try:
+            fast_components = _fast_component_extraction(pdf_text)
+            if fast_components:
+                components_list.extend(fast_components)
+        except Exception as e:
+            print(f"⚠️  Fast component extraction failed: {str(e)[:50]}")
     
     return components_list
 
@@ -1436,12 +1540,10 @@ def _run_sections_internal(sections, model_override, api_key):
     mode = "heuristic"
     log: list[str] = []
     llm_succeeded = False
-    llm_available = True
-
-    # quick LLM probe (connectivity only, 2-sec timeout)
-    if not _quick_llm_probe(model_override, api_key):
-        llm_available = False
-        log.append(f"  ⚠️  No LLM provider available")
+    llm_available = False  # Disable LLM entirely due to slow Ollama (can re-enable after restart)
+    
+    # Log why LLM is disabled
+    log.append(f"  ⚠️  LLM disabled (slow Ollama - use heuristic + fast component extraction)")
 
     for i, sec in enumerate(sections):
         text    = sec.get("text", "").strip()
