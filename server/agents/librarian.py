@@ -1390,6 +1390,46 @@ def run_sections(
     return _normalise_hw_map(merged_raw), mode, log
 
 
+def _quick_llm_probe(model_str: str, api_key: str) -> bool:
+    """
+    Quick check if ANY LLM provider is available (just connectivity, no actual call).
+    Returns True if at least one provider is reachable.
+    """
+    if model_str and ":" in model_str:
+        provider, _ = model_str.split(":", 1)
+        if provider == "ollama":
+            try:
+                host = os.getenv("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
+                with urllib.request.urlopen(f"{host}/api/tags", timeout=2) as resp:
+                    data = json.loads(resp.read())
+                    return len(data.get("models", [])) > 0
+            except:
+                return False
+        # For cloud providers, check if API key is present
+        if provider in ("openai", "anthropic", "gemini", "groq", "mistral", "openrouter"):
+            key = api_key or os.getenv(CLOUD_PROVIDERS.get(provider, {}).get("key_name", ""), "")
+            return bool(key)
+        return False
+    
+    # Auto-detect: try Ollama first (fastest check)
+    try:
+        host = os.getenv("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
+        with urllib.request.urlopen(f"{host}/api/tags", timeout=2) as resp:
+            data = json.loads(resp.read())
+            if len(data.get("models", [])) > 0:
+                return True
+    except:
+        pass
+    
+    # Check cloud providers
+    for provider_name in CLOUD_PROVIDERS.keys():
+        key_var = CLOUD_PROVIDERS[provider_name].get("key_name", "")
+        if os.getenv(key_var):
+            return True
+    
+    return False
+
+
 def _run_sections_internal(sections, model_override, api_key):
     """Internal implementation (before normalisation)."""
     merged: dict = {}
@@ -1398,15 +1438,10 @@ def _run_sections_internal(sections, model_override, api_key):
     llm_succeeded = False
     llm_available = True
 
-    # quick LLM probe (1-sec timeout dummy call to detect availability)
-    try:
-        _call_llm("Return JSON: {}", model_override, api_key)
-        # if model_override is blank and ollama absent this will raise
-    except RuntimeError as e:
-        if "no_llm_available" in str(e) or "no API key" in str(e).lower():
-            llm_available = False
-    except Exception:
-        pass  # parse error etc — LLM is still there
+    # quick LLM probe (connectivity only, 2-sec timeout)
+    if not _quick_llm_probe(model_override, api_key):
+        llm_available = False
+        log.append(f"  ⚠️  No LLM provider available")
 
     for i, sec in enumerate(sections):
         text    = sec.get("text", "").strip()
