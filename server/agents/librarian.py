@@ -1666,38 +1666,95 @@ def _run_sections_internal(sections, model_override, api_key):
             partial = True
 
         try:
-            raw = _call_llm(prompt, model_override, api_key)
-            obj = json.loads(_strip_fences(raw))
-            if not isinstance(obj, dict):
-                raise ValueError("not a dict")
-            for wrapper in ("result", "hardware_map", "output", "data"):
-                if wrapper in obj and isinstance(obj[wrapper], dict):
-                    obj = obj[wrapper]
-                    break
-            if not partial:
-                _validate_hw_map(obj)
-            merged = _merge_hw_maps(merged, obj) if merged else obj
-            llm_succeeded = True
-            if not mode.startswith("llm"):
-                mode = model_override or "llm:auto"
-            n_p = len(obj.get("peripherals", []))
-            n_r = len(obj.get("power_rails", []))
-            log.append(f"       ↳ LLM ✓ {n_p} peripherals, {n_r} rails")
-        except RuntimeError as e:
-            llm_available = False
-            log.append(f"       ↳ LLM unavailable ({e}) → heuristic")
+            import signal
+            
+            def llm_timeout_handler(signum, frame):
+                raise TimeoutError("LLM extraction exceeded 30s")
+            
+            # Set 30s timeout for LLM extraction
+            signal.signal(signal.SIGALRM, llm_timeout_handler)
+            signal.alarm(30)
+            
             try:
-                hw = _heuristic_extract(text)
-                merged = _merge_hw_maps(merged, hw) if merged else hw
-            except Exception:
-                pass
-        except Exception as e:
-            log.append(f"       ↳ LLM parse error ({e}) → heuristic")
+                raw = _call_llm(prompt, model_override, api_key)
+                signal.alarm(0)  # Cancel alarm
+                obj = json.loads(_strip_fences(raw))
+                if not isinstance(obj, dict):
+                    raise ValueError("not a dict")
+                for wrapper in ("result", "hardware_map", "output", "data"):
+                    if wrapper in obj and isinstance(obj[wrapper], dict):
+                        obj = obj[wrapper]
+                        break
+                if not partial:
+                    _validate_hw_map(obj)
+                merged = _merge_hw_maps(merged, obj) if merged else obj
+                llm_succeeded = True
+                if not mode.startswith("llm"):
+                    mode = model_override or "llm:auto"
+                n_p = len(obj.get("peripherals", []))
+                n_r = len(obj.get("power_rails", []))
+                log.append(f"       ↳ LLM ✓ {n_p} peripherals, {n_r} rails")
+            except TimeoutError:
+                signal.alarm(0)
+                log.append(f"       ↳ LLM timeout (30s) → heuristic")
+                llm_available = False
+                try:
+                    hw = _heuristic_extract(text)
+                    merged = _merge_hw_maps(merged, hw) if merged else hw
+                except Exception:
+                    pass
+            except RuntimeError as e:
+                signal.alarm(0)
+                llm_available = False
+                log.append(f"       ↳ LLM unavailable ({e}) → heuristic")
+                try:
+                    hw = _heuristic_extract(text)
+                    merged = _merge_hw_maps(merged, hw) if merged else hw
+                except Exception:
+                    pass
+            except Exception as e:
+                signal.alarm(0)
+                log.append(f"       ↳ LLM parse error ({e}) → heuristic")
+                try:
+                    hw = _heuristic_extract(text)
+                    merged = _merge_hw_maps(merged, hw) if merged else hw
+                except Exception:
+                    pass
+        except ImportError:
+            # signal not available, try without timeout
             try:
-                hw = _heuristic_extract(text)
-                merged = _merge_hw_maps(merged, hw) if merged else hw
-            except Exception:
-                pass
+                raw = _call_llm(prompt, model_override, api_key)
+                obj = json.loads(_strip_fences(raw))
+                if not isinstance(obj, dict):
+                    raise ValueError("not a dict")
+                for wrapper in ("result", "hardware_map", "output", "data"):
+                    if wrapper in obj and isinstance(obj[wrapper], dict):
+                        obj = obj[wrapper]
+                        break
+                if not partial:
+                    _validate_hw_map(obj)
+                merged = _merge_hw_maps(merged, obj) if merged else obj
+                llm_succeeded = True
+                if not mode.startswith("llm"):
+                    mode = model_override or "llm:auto"
+                n_p = len(obj.get("peripherals", []))
+                n_r = len(obj.get("power_rails", []))
+                log.append(f"       ↳ LLM ✓ {n_p} peripherals, {n_r} rails")
+            except RuntimeError as e:
+                llm_available = False
+                log.append(f"       ↳ LLM unavailable ({e}) → heuristic")
+                try:
+                    hw = _heuristic_extract(text)
+                    merged = _merge_hw_maps(merged, hw) if merged else hw
+                except Exception:
+                    pass
+            except Exception as e:
+                log.append(f"       ↳ LLM parse error ({e}) → heuristic")
+                try:
+                    hw = _heuristic_extract(text)
+                    merged = _merge_hw_maps(merged, hw) if merged else hw
+                except Exception:
+                    pass
         
         # Extract components from each section (LLM path)
         try:
