@@ -243,9 +243,14 @@ async def _upload_stream(
             return librarian.run_sections(sections, model_override=model, api_key=api_key, disable_heuristic_fallback=disable_heuristic_fallback)
         
         try:
-            hw_map, mode, section_log = await asyncio.get_event_loop().run_in_executor(
-                None, _run
+            hw_map, mode, section_log = await asyncio.wait_for(
+                asyncio.get_event_loop().run_in_executor(None, _run),
+                timeout=40.0  # 40s total timeout for LLM + heuristic extraction
             )
+        except asyncio.TimeoutError:
+            yield _event(f"  ⚠️  @librarian timeout after 40s for {filename}", "error")
+            failed_files.append(filename)
+            continue
         except Exception as e:
             yield _event(f"  ⚠️  @librarian failed for {filename}: {e}", "error")
             failed_files.append(filename)

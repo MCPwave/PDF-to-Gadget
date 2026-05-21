@@ -459,87 +459,61 @@ def extract_components_from_pdf(pdf_text: str) -> list[dict]:
     
     components_list = []
     
-    # ===== AGENT-BASED DETECTION (LLM Only, with timeout) =====
+    # ===== AGENT-BASED DETECTION (LLM Only, timeout handled by asyncio.wait_for in main.py) =====
     if detect_components_with_llm:
         try:
-            import signal
+            llm_components, model_used = detect_components_with_llm(pdf_text)
             
-            def timeout_handler(signum, frame):
-                raise TimeoutError("Component detection exceeded 15s")
-            
-            # Set 15s timeout for component detection
-            signal.signal(signal.SIGALRM, timeout_handler)
-            signal.alarm(15)
-            
-            try:
-                llm_components, model_used = detect_components_with_llm(pdf_text)
-                signal.alarm(0)  # Cancel alarm
-                
-                if llm_components:
-                    if format_components_for_pipeline:
-                        formatted = format_components_for_pipeline(llm_components)
-                        for comp in formatted:
-                            # Preserve ALL extracted fields from LLM
-                            component_dict = {
-                                "id": f"component_{comp.get('name', 'unknown').lower().replace(' ', '_')}_{len(components_list)}",
-                                "name": comp.get("name", "Unknown"),
-                                "type": comp.get("type", "other"),
-                                "manufacturer": comp.get("manufacturer", ""),
-                                "model_number": comp.get("model_number", ""),
-                                "variant": comp.get("variant", ""),
-                                "version": comp.get("version", ""),
-                                "connection": comp.get("connection", ""),
-                                "connection_version": comp.get("connection_version", ""),
-                                "voltage": comp.get("voltage", ""),
-                                "description": comp.get("description", ""),
-                                "confidence": comp.get("confidence", 0.8),
-                                "is_component": True,
-                                "source": "llm",
-                                "model_used": model_used
-                            }
-                            
-                            # Add IC details
-                            ic_name = comp.get("model_number", "").lower() or comp.get("name", "").lower()
-                            if ic_name:
-                                component_dict["component_ic"] = {
-                                    "name": ic_name.upper(),
-                                    "vendor": comp.get("manufacturer", "Unknown"),
-                                    "type": comp.get("type", "unknown")
-                                }
-                            
-                            # Map connection to type
-                            connection_map = {
-                                "mipi_csi": "mipi_csi",
-                                "mipi_dsi": "mipi_dsi",
-                                "i2c": "i2c",
-                                "spi": "spi",
-                                "usb": "usb",
-                                "uart": "uart",
-                                "pcie": "pcie",
-                                "ethernet": "ethernet"
-                            }
-                            component_dict["connection_type"] = connection_map.get(comp.get("connection", ""), comp.get("connection", ""))
-                            
-                            components_list.append(component_dict)
-                    else:
-                        components_list.extend(llm_components)
-            except TimeoutError:
-                signal.alarm(0)
-                print(f"⚠️  Component detection timed out (>15s)")
-            except Exception as e:
-                signal.alarm(0)
-                print(f"⚠️  LLM component detection failed: {str(e)[:200]}")
-        except ImportError:
-            # signal module not available, skip timeout
-            try:
-                llm_components, model_used = detect_components_with_llm(pdf_text)
-                if llm_components and format_components_for_pipeline:
+            if llm_components:
+                if format_components_for_pipeline:
                     formatted = format_components_for_pipeline(llm_components)
-                    components_list.extend(formatted)
-                elif llm_components:
+                    for comp in formatted:
+                        # Preserve ALL extracted fields from LLM
+                        component_dict = {
+                            "id": f"component_{comp.get('name', 'unknown').lower().replace(' ', '_')}_{len(components_list)}",
+                            "name": comp.get("name", "Unknown"),
+                            "type": comp.get("type", "other"),
+                            "manufacturer": comp.get("manufacturer", ""),
+                            "model_number": comp.get("model_number", ""),
+                            "variant": comp.get("variant", ""),
+                            "version": comp.get("version", ""),
+                            "connection": comp.get("connection", ""),
+                            "connection_version": comp.get("connection_version", ""),
+                            "voltage": comp.get("voltage", ""),
+                            "description": comp.get("description", ""),
+                            "confidence": comp.get("confidence", 0.8),
+                            "is_component": True,
+                            "source": "llm",
+                            "model_used": model_used
+                        }
+                        
+                        # Add IC details
+                        ic_name = comp.get("model_number", "").lower() or comp.get("name", "").lower()
+                        if ic_name:
+                            component_dict["component_ic"] = {
+                                "name": ic_name.upper(),
+                                "vendor": comp.get("manufacturer", "Unknown"),
+                                "type": comp.get("type", "unknown")
+                            }
+                        
+                        # Map connection to type
+                        connection_map = {
+                            "mipi_csi": "mipi_csi",
+                            "mipi_dsi": "mipi_dsi",
+                            "i2c": "i2c",
+                            "spi": "spi",
+                            "usb": "usb",
+                            "uart": "uart",
+                            "pcie": "pcie",
+                            "ethernet": "ethernet"
+                        }
+                        component_dict["connection_type"] = connection_map.get(comp.get("connection", ""), comp.get("connection", ""))
+                        
+                        components_list.append(component_dict)
+                else:
                     components_list.extend(llm_components)
-            except Exception as e:
-                print(f"⚠️  LLM component detection failed: {str(e)[:200]}")
+        except Exception as e:
+            print(f"⚠️  LLM component detection failed: {str(e)[:200]}")
     
     # If LLM didn't find components, try fast heuristic extraction
     if not components_list:
@@ -1674,95 +1648,35 @@ def _run_sections_internal(sections, model_override, api_key, disable_heuristic_
             partial = True
 
         try:
-            import signal
-            
-            def llm_timeout_handler(signum, frame):
-                raise TimeoutError("LLM extraction exceeded 30s")
-            
-            # Set 30s timeout for LLM extraction
-            signal.signal(signal.SIGALRM, llm_timeout_handler)
-            signal.alarm(30)
-            
-            try:
-                raw = _call_llm(prompt, model_override, api_key)
-                signal.alarm(0)  # Cancel alarm
-                obj = json.loads(_strip_fences(raw))
-                if not isinstance(obj, dict):
-                    raise ValueError("not a dict")
-                for wrapper in ("result", "hardware_map", "output", "data"):
-                    if wrapper in obj and isinstance(obj[wrapper], dict):
-                        obj = obj[wrapper]
-                        break
-                if not partial:
-                    _validate_hw_map(obj)
-                merged = _merge_hw_maps(merged, obj) if merged else obj
-                llm_succeeded = True
-                if not mode.startswith("llm"):
-                    mode = model_override or "llm:auto"
-                n_p = len(obj.get("peripherals", []))
-                n_r = len(obj.get("power_rails", []))
-                log.append(f"       ↳ LLM ✓ {n_p} peripherals, {n_r} rails")
-            except TimeoutError:
-                signal.alarm(0)
-                log.append(f"       ↳ LLM timeout (30s) → heuristic")
-                llm_available = False
-                try:
-                    hw = _heuristic_extract(text)
-                    merged = _merge_hw_maps(merged, hw) if merged else hw
-                except Exception:
-                    pass
-            except RuntimeError as e:
-                signal.alarm(0)
-                llm_available = False
+            # LLM extraction (timeout handled by asyncio.wait_for in main.py)
+            raw = _call_llm(prompt, model_override, api_key)
+            obj = json.loads(_strip_fences(raw))
+            if not isinstance(obj, dict):
+                raise ValueError("not a dict")
+            for wrapper in ("result", "hardware_map", "output", "data"):
+                if wrapper in obj and isinstance(obj[wrapper], dict):
+                    obj = obj[wrapper]
+                    break
+            if not partial:
+                _validate_hw_map(obj)
+            merged = _merge_hw_maps(merged, obj) if merged else obj
+            llm_succeeded = True
+            if not mode.startswith("llm"):
+                mode = model_override or "llm:auto"
+            n_p = len(obj.get("peripherals", []))
+            n_r = len(obj.get("power_rails", []))
+            log.append(f"       ↳ LLM ✓ {n_p} peripherals, {n_r} rails")
+        except (RuntimeError, ValueError) as e:
+            llm_available = False
+            if isinstance(e, RuntimeError):
                 log.append(f"       ↳ LLM unavailable ({e}) → heuristic")
-                try:
-                    hw = _heuristic_extract(text)
-                    merged = _merge_hw_maps(merged, hw) if merged else hw
-                except Exception:
-                    pass
-            except Exception as e:
-                signal.alarm(0)
+            else:
                 log.append(f"       ↳ LLM parse error ({e}) → heuristic")
-                try:
-                    hw = _heuristic_extract(text)
-                    merged = _merge_hw_maps(merged, hw) if merged else hw
-                except Exception:
-                    pass
-        except ImportError:
-            # signal not available, try without timeout
             try:
-                raw = _call_llm(prompt, model_override, api_key)
-                obj = json.loads(_strip_fences(raw))
-                if not isinstance(obj, dict):
-                    raise ValueError("not a dict")
-                for wrapper in ("result", "hardware_map", "output", "data"):
-                    if wrapper in obj and isinstance(obj[wrapper], dict):
-                        obj = obj[wrapper]
-                        break
-                if not partial:
-                    _validate_hw_map(obj)
-                merged = _merge_hw_maps(merged, obj) if merged else obj
-                llm_succeeded = True
-                if not mode.startswith("llm"):
-                    mode = model_override or "llm:auto"
-                n_p = len(obj.get("peripherals", []))
-                n_r = len(obj.get("power_rails", []))
-                log.append(f"       ↳ LLM ✓ {n_p} peripherals, {n_r} rails")
-            except RuntimeError as e:
-                llm_available = False
-                log.append(f"       ↳ LLM unavailable ({e}) → heuristic")
-                try:
-                    hw = _heuristic_extract(text)
-                    merged = _merge_hw_maps(merged, hw) if merged else hw
-                except Exception:
-                    pass
-            except Exception as e:
-                log.append(f"       ↳ LLM parse error ({e}) → heuristic")
-                try:
-                    hw = _heuristic_extract(text)
-                    merged = _merge_hw_maps(merged, hw) if merged else hw
-                except Exception:
-                    pass
+                hw = _heuristic_extract(text)
+                merged = _merge_hw_maps(merged, hw) if merged else hw
+            except Exception:
+                pass
         
         # Extract components from each section (LLM path)
         try:
