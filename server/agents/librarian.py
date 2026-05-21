@@ -1540,10 +1540,18 @@ def _run_sections_internal(sections, model_override, api_key):
     mode = "heuristic"
     log: list[str] = []
     llm_succeeded = False
-    llm_available = False  # Disable LLM entirely due to slow Ollama (can re-enable after restart)
+    llm_available = True
     
-    # Log why LLM is disabled
-    log.append(f"  ⚠️  LLM disabled (slow Ollama - use heuristic + fast component extraction)")
+    # Check if fallback to heuristic is disabled
+    disable_heuristic_fallback = os.getenv("DISABLE_HEURISTIC_FALLBACK", "").lower() in ("1", "true", "yes")
+
+    # quick LLM probe (connectivity only, 2-sec timeout)
+    if not _quick_llm_probe(model_override, api_key):
+        llm_available = False
+        if disable_heuristic_fallback:
+            log.append(f"  ❌ LLM unavailable (fallback disabled)")
+        else:
+            log.append(f"  ⚠️  LLM unavailable (using heuristic fallback)")
 
     for i, sec in enumerate(sections):
         text    = sec.get("text", "").strip()
@@ -1559,6 +1567,10 @@ def _run_sections_internal(sections, model_override, api_key):
         log.append(f"  📄 [{page_label}] \"{heading}\" → {stype}")
 
         if not llm_available:
+            if disable_heuristic_fallback:
+                log.append(f"       ↳ LLM unavailable (fallback disabled) - SKIPPED")
+                continue
+                
             try:
                 hw = _heuristic_extract(text)
                 merged = _merge_hw_maps(merged, hw) if merged else hw
