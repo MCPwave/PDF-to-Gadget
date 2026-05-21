@@ -323,11 +323,24 @@ def _fast_component_extraction(pdf_text: str) -> list[dict]:
         (r"ipu\d+.*?(?:camera|imaging|processor)", "IPU Camera"),
     ]
     
-    # GPU patterns
+    # GPU patterns (order matters: specific models first, generic last)
     gpu_patterns = [
+        # NVIDIA specific models (handle ® and ™ symbols)
+        (r"nvidia.*?rtx.*?(?:4070|4050)", "NVIDIA GeForce RTX 4000 Series"),
+        (r"nvidia.*?rtx\s*40", "NVIDIA GeForce RTX 40 Series"),
+        (r"rtx.*?(?:4070|4050|40\s*series)", "NVIDIA GeForce RTX"),
         (r"nvidia.*?(?:rtx|gtx|geforce|tesla|a\d{2})", "NVIDIA GPU"),
+        
+        # AMD specific
+        (r"amd.*?(?:radeon\s+rx|rx\s+\d+)", "AMD Radeon GPU"),
         (r"amd.*?(?:radeon|rx|mi\d{2})", "AMD GPU"),
+        
+        # Intel specific (handle ® and ™)
+        (r"intel.*?arc.*?graphics", "Intel Arc Graphics"),
+        (r"arc.*?graphics", "Intel Arc Graphics"),
         (r"intel.*?(?:iris|arc|a\d{3})", "Intel GPU"),
+        
+        # Generic
         (r"\bgpu\b.*?graphics", "GPU"),
     ]
     
@@ -351,16 +364,32 @@ def _fast_component_extraction(pdf_text: str) -> list[dict]:
     
     text_lower = pdf_text.lower()
     found_comps = {}
+    gpu_matches = []  # Collect all GPU matches, then deduplicate
     
     for pattern, name in camera_patterns:
         if re.search(pattern, text_lower):
             if "camera" not in found_comps:
                 found_comps["camera"] = {"name": name, "type": "camera"}
     
+    # GPU patterns: collect all matches, keep best ones
     for pattern, name in gpu_patterns:
         if re.search(pattern, text_lower):
-            if "gpu" not in found_comps:
-                found_comps["gpu"] = {"name": name, "type": "gpu"}
+            gpu_matches.append(name)
+    
+    # Deduplicate GPUs: keep specific names (RTX 40 Series, Arc Graphics) + one generic per vendor
+    if gpu_matches:
+        # Group by vendor
+        nvidia_matches = [m for m in gpu_matches if 'nvidia' in m.lower()]
+        intel_matches = [m for m in gpu_matches if 'intel' in m.lower() or 'arc' in m.lower()]
+        amd_matches = [m for m in gpu_matches if 'amd' in m.lower()]
+        generic_matches = [m for m in gpu_matches if m == 'GPU']
+        
+        # Pick best match per vendor (longer = more specific)
+        for idx, vendor_list in enumerate([nvidia_matches, intel_matches, amd_matches]):
+            if vendor_list:
+                best = max(vendor_list, key=len)
+                key = f"gpu_{idx}"
+                found_comps[key] = {"name": best, "type": "gpu"}
     
     for pattern, name in audio_patterns:
         if re.search(pattern, text_lower):
