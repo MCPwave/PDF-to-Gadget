@@ -964,6 +964,18 @@
         ⏳ Processing files…
       </div>
       
+      <!-- Extraction options -->
+      <div style="margin-top: 16px; padding: 12px; background: var(--surface); border-radius: var(--radius); border-left: 3px solid var(--canonical-orange);">
+        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: var(--text);">
+          <input type="checkbox" id="llm-only-mode" style="cursor: pointer; width: 16px; height: 16px;"/>
+          <span>🧠 LLM-only extraction (no heuristic fallback)</span>
+        </label>
+        <div style="font-size: 11px; color: var(--muted); margin-top: 6px; line-height: 1.4;">
+          ℹ️ Unchecked: Fast extraction with heuristic fallback (0.65 confidence)<br/>
+          Checked: Higher accuracy but slower, may skip sections (0.95 confidence)
+        </div>
+      </div>
+      
       <!-- Validation results section -->
       <div id="validation-section">
         <div class="validation-header">
@@ -1373,6 +1385,10 @@
     if (modelSel.value) fd.append('model', modelSel.value);
     const activeKey = getActiveApiKey();
     if (activeKey) fd.append('api_key', activeKey);
+    
+    // Add LLM-only mode flag
+    const llmOnlyMode = document.getElementById('llm-only-mode').checked;
+    fd.append('disable_heuristic_fallback', llmOnlyMode ? 'true' : 'false');
 
     try {
       const res = await fetch('/api/upload', { method: 'POST', body: fd });

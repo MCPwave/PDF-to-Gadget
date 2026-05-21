@@ -177,6 +177,7 @@ async def _upload_stream(
     files_data: list[tuple[bytes, str]],
     model: str,
     api_key: str,
+    disable_heuristic_fallback: str = "false",
 ) -> AsyncIterator[str]:
     """
     Stream extraction progress for multiple PDFs, then merge and return final hw_map.
@@ -185,6 +186,7 @@ async def _upload_stream(
         files_data: List of (bytes, filename) tuples
         model: LLM model override
         api_key: LLM API key
+        disable_heuristic_fallback: "true" to disable fallback to heuristic extraction
     
     Yields:
         SSE events: log, error, upload_done
@@ -238,7 +240,7 @@ async def _upload_stream(
         
         # Extract hardware map from sections
         def _run():
-            return librarian.run_sections(sections, model_override=model, api_key=api_key)
+            return librarian.run_sections(sections, model_override=model, api_key=api_key, disable_heuristic_fallback=disable_heuristic_fallback)
         
         try:
             hw_map, mode, section_log = await asyncio.get_event_loop().run_in_executor(
@@ -347,6 +349,7 @@ async def upload_pdf(
     files: list[UploadFile] = File(...),
     model: str = Form(""),
     api_key: str = Form(""),
+    disable_heuristic_fallback: str = Form("false"),
 ):
     """Accept multiple files and stream extraction progress.
     
@@ -382,7 +385,7 @@ async def upload_pdf(
         )
     
     return StreamingResponse(
-        _upload_stream(files_data, model, api_key),
+        _upload_stream(files_data, model, api_key, disable_heuristic_fallback),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

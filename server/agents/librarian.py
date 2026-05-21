@@ -1513,13 +1513,20 @@ def run_sections(
     sections: list[dict],
     model_override: str = "",
     api_key: str = "",
+    disable_heuristic_fallback: str = "",
 ) -> tuple[dict, str, list[str]]:
     """
     Section-by-section extraction. Returns (hw_map, mode, log_lines).
     Called by main.py upload stream.
+    
+    Args:
+        sections: List of section dicts with text content
+        model_override: LLM model override
+        api_key: LLM API key
+        disable_heuristic_fallback: "true"/"1"/"yes" to disable fallback to heuristics
     """
     # imported here to avoid circular issue with run_sections defined above
-    merged_raw, mode, log = _run_sections_internal(sections, model_override, api_key)
+    merged_raw, mode, log = _run_sections_internal(sections, model_override, api_key, disable_heuristic_fallback)
     return _normalise_hw_map(merged_raw), mode, log
 
 
@@ -1563,7 +1570,7 @@ def _quick_llm_probe(model_str: str, api_key: str) -> bool:
     return False
 
 
-def _run_sections_internal(sections, model_override, api_key):
+def _run_sections_internal(sections, model_override, api_key, disable_heuristic_fallback=""):
     """Internal implementation (before normalisation)."""
     merged: dict = {}
     mode = "heuristic"
@@ -1571,13 +1578,14 @@ def _run_sections_internal(sections, model_override, api_key):
     llm_succeeded = False
     llm_available = True
     
-    # Check if fallback to heuristic is disabled
-    disable_heuristic_fallback = os.getenv("DISABLE_HEURISTIC_FALLBACK", "").lower() in ("1", "true", "yes")
+    # Check if fallback to heuristic is disabled (from parameter or env var)
+    skip_heuristic = (disable_heuristic_fallback.lower() in ("1", "true", "yes") or
+                      os.getenv("DISABLE_HEURISTIC_FALLBACK", "").lower() in ("1", "true", "yes"))
 
     # quick LLM probe (connectivity only, 2-sec timeout)
     if not _quick_llm_probe(model_override, api_key):
         llm_available = False
-        if disable_heuristic_fallback:
+        if skip_heuristic:
             log.append(f"  ❌ LLM unavailable (fallback disabled)")
         else:
             log.append(f"  ⚠️  LLM unavailable (using heuristic fallback)")
@@ -1596,7 +1604,7 @@ def _run_sections_internal(sections, model_override, api_key):
         log.append(f"  📄 [{page_label}] \"{heading}\" → {stype}")
 
         if not llm_available:
-            if disable_heuristic_fallback:
+            if skip_heuristic:
                 log.append(f"       ↳ LLM unavailable (fallback disabled) - SKIPPED")
                 continue
                 
