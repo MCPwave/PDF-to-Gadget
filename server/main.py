@@ -10,7 +10,9 @@ import os
 import re
 import sys
 import time
+import urllib.request
 import uuid
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import AsyncIterator
 
@@ -43,6 +45,7 @@ STATIC_DIR = Path(__file__).parent / "static"
 # ── In-memory session store ────────────────────────────────────────────────────
 
 _sessions: dict[str, dict] = {}   # session_id -> { hw_map, pdf_sections, created_at, validation_report }
+_upload_controls: dict[str, dict] = {}  # upload_id -> { stop_requested, created_at }
 
 
 def _cleanup_old_sessions(max_age_seconds: int = 3600):
@@ -146,6 +149,148 @@ def _extract_pdf_sections(data: bytes) -> list[dict]:
     return sections
 
 
+def _fetch_url_content(url: str) -> tuple[str, str]:
+    """
+    Fetch content from URL (HTML, Markdown, GitHub, datasheets).
+    Returns: (content_text, source_type: 'html'|'markdown'|'github'|'text')
+    """
+    if not url or not isinstance(url, str):
+        raise ValueError("Invalid URL")
+    
+    # Normalize URL
+    url = url.strip()
+    if not url.startswith(("http://", "https://")):
+        url = f"https://{url}"
+    
+    headers = {"User-Agent": "pdf-to-gadget/1.0"}
+    
+    try:
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=10) as response:
+            data = response.read()
+            content_type = response.headers.get("Content-Type", "").lower()
+            
+            # GitHub raw content or markdown
+            if "github.com" in url:
+                if url.endswith(".md") or "raw.githubusercontent.com" in url:
+                    return data.decode("utf-8"), "markdown"
+                else:
+                    return data.decode("utf-8"), "github"
+            
+            # HTML content
+            if "text/html" in content_type:
+                # Extract text from HTML
+                parser = _HTMLTextExtractor()
+                parser.feed(data.decode("utf-8", errors="ignore"))
+                return parser.get_text(), "html"
+            
+            # Plain text / Markdown
+            if "text/plain" in content_type or "text/markdown" in content_type:
+                return data.decode("utf-8"), "markdown"
+            
+            # Try decoding as text (fallback)
+            try:
+                return data.decode("utf-8"), "text"
+            except:
+                return data.decode("latin-1"), "text"
+                
+    except Exception as e:
+        raise ValueError(f"Failed to fetch URL: {str(e)}")
+
+
+class _HTMLTextExtractor(HTMLParser):
+    """Extract text content from HTML."""
+    def __init__(self):
+        super().__init__()
+        self.text_parts = []
+        self.skip_tags = {"script", "style", "meta", "link"}
+        self.current_tag = None
+        
+    def handle_starttag(self, tag, attrs):
+        self.current_tag = tag
+        
+    def handle_endtag(self, tag):
+        self.current_tag = None
+        
+    def handle_data(self, data):
+        if self.current_tag not in self.skip_tags:
+            text = data.strip()
+            if text:
+                self.text_parts.append(text)
+                
+    def get_text(self) -> str:
+        return "\n".join(self.text_parts)
+
+
+def _parse_url_sections(content: str, source_type: str, url: str) -> list[dict]:
+    """Parse URL content into sections (similar to PDF sections)."""
+    sections = []
+    
+    # Split by headers/sections
+    if source_type == "markdown" or source_type == "text":
+        # Split by markdown headers
+        parts = re.split(r'^#{1,6}\s+(.+)$', content, flags=re.MULTILINE)
+        for i in range(1, len(parts), 2):
+            if i < len(parts):
+                heading = parts[i].strip() if i < len(parts) else "Content"
+                text = parts[i+1].strip() if i+1 < len(parts) else ""
+                if text:
+                    sections.append({
+                        "heading": heading,
+                        "text": text,
+                        "page_start": 0,
+                        "page_end": 0,
+                        "source": f"URL: {url}",
+                    })
+    else:  # html, github
+        # Split by paragraph markers or section dividers
+        lines = content.split("\n")
+        cur_heading = "Web Page Content"
+        cur_text = []
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            # Simple heuristic: lines in ALL_CAPS or very short + followed by content = heading
+            if len(line) < 100 and line.isupper() and len(cur_text) > 3:
+                if cur_text:
+                    sections.append({
+                        "heading": cur_heading,
+                        "text": "\n".join(cur_text),
+                        "page_start": 0,
+                        "page_end": 0,
+                        "source": f"URL: {url}",
+                    })
+                    cur_heading = line
+                    cur_text = []
+            else:
+                cur_text.append(line)
+        
+        # Add remaining section
+        if cur_text:
+            sections.append({
+                "heading": cur_heading,
+                "text": "\n".join(cur_text),
+                "page_start": 0,
+                "page_end": 0,
+                "source": f"URL: {url}",
+            })
+    
+    # Fallback: if no sections parsed, return whole content as one
+    if not sections:
+        sections = [{
+            "heading": "Web Content",
+            "text": content,
+            "page_start": 0,
+            "page_end": 0,
+            "source": f"URL: {url}",
+        }]
+    
+    return sections
+
+
+
 # ── Routes ─────────────────────────────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
@@ -178,15 +323,18 @@ async def _upload_stream(
     model: str,
     api_key: str,
     disable_heuristic_fallback: str = "false",
+    upload_id: str = "",
+    is_url: bool = False,
 ) -> AsyncIterator[str]:
     """
-    Stream extraction progress for multiple PDFs, then merge and return final hw_map.
+    Stream extraction progress for multiple PDFs/URLs, then merge and return final hw_map.
     
     Args:
         files_data: List of (bytes, filename) tuples
         model: LLM model override
         api_key: LLM API key
         disable_heuristic_fallback: "true" to disable fallback to heuristic extraction
+        is_url: True if content from URLs (affects parsing logic)
     
     Yields:
         SSE events: log, error, upload_done
@@ -194,159 +342,176 @@ async def _upload_stream(
     if not files_data:
         yield _event("No files provided", "error")
         return
-    
-    yield _event(f"📂 Processing {len(files_data)} file(s)…", "log")
-    await asyncio.sleep(0)
-    
-    # Cleanup old sessions before processing new upload
-    _cleanup_old_sessions()
-    
-    all_maps: list[dict] = []
-    failed_files: list[str] = []
-    
-    # Extract hardware maps from each file
-    for file_idx, (data, filename) in enumerate(files_data, 1):
-        yield _event(f"📄 File {file_idx}/{len(files_data)}: {filename}", "log")
+
+    llm_only_mode = disable_heuristic_fallback.lower() in ("1", "true", "yes")
+    _upload_controls[upload_id] = {"stop_requested": False, "created_at": time.time()}
+
+    try:
+        yield f"data: {json.dumps({'type': 'upload_started', 'upload_id': upload_id})}\n\n"
+        yield _event(f"📂 Processing {len(files_data)} file(s)…", "log")
         await asyncio.sleep(0)
         
-        is_pdf = filename.lower().endswith(".pdf")
-        if is_pdf:
-            try:
-                sections = await asyncio.get_event_loop().run_in_executor(
-                    None, _extract_pdf_sections, data
-                )
-            except Exception as e:
-                yield _event(f"  ⚠️  PDF parse error for {filename}: {e}", "error")
+        # Cleanup old sessions before processing new upload
+        _cleanup_old_sessions()
+        
+        all_maps: list[dict] = []
+        failed_files: list[str] = []
+        
+        # Extract hardware maps from each file/URL
+        for file_idx, (data, filename) in enumerate(files_data, 1):
+            if _upload_controls.get(upload_id, {}).get("stop_requested"):
+                yield _event("⏹️ Stop requested — finalizing discovered components…", "log")
+                break
+
+            yield _event(f"📄 File {file_idx}/{len(files_data)}: {filename}", "log")
+            await asyncio.sleep(0)
+            
+            is_pdf = filename.lower().endswith(".pdf")
+            if is_pdf:
+                try:
+                    sections = await asyncio.get_event_loop().run_in_executor(
+                        None, _extract_pdf_sections, data
+                    )
+                except Exception as e:
+                    yield _event(f"  ⚠️  PDF parse error for {filename}: {e}", "error")
+                    failed_files.append(filename)
+                    continue
+                
+                yield _event(f"  ✓ Found {len(sections)} sections", "log")
+            else:
+                text = data.decode("utf-8", errors="replace")
+                sections = [{"heading": "Full Text", "text": text,
+                            "page_start": 1, "page_end": 1}]
+                yield _event(f"  ✓ Plain-text file processed", "log")
+            
+            await asyncio.sleep(0)
+            
+            if not any(s["text"].strip() for s in sections):
+                yield _event(f"  ⚠️  No extractable text in {filename}", "error")
                 failed_files.append(filename)
                 continue
             
-            yield _event(f"  ✓ Found {len(sections)} sections", "log")
-        else:
-            text = data.decode("utf-8", errors="replace")
-            sections = [{"heading": "Full Text", "text": text,
-                        "page_start": 1, "page_end": 1}]
-            yield _event(f"  ✓ Plain-text file processed", "log")
+            yield _event(f"  🤖 @librarian — extracting hardware map "
+                        f"(model: {model or 'auto-detect'})…", "log")
+            if llm_only_mode:
+                yield _event("  ℹ️  LLM-only mode enabled (no timeout)", "log")
+            await asyncio.sleep(0)
+            
+            # Extract hardware map from sections
+            def _run():
+                return librarian.run_sections(
+                    sections,
+                    model_override=model,
+                    api_key=api_key,
+                    disable_heuristic_fallback=disable_heuristic_fallback,
+                    should_stop=lambda: _upload_controls.get(upload_id, {}).get("stop_requested", False),
+                )
+            
+            try:
+                hw_map, mode, section_log = await asyncio.get_event_loop().run_in_executor(None, _run)
+            except Exception as e:
+                yield _event(f"  ⚠️  @librarian failed for {filename}: {e}", "error")
+                failed_files.append(filename)
+                continue
+            
+            for entry in section_log:
+                yield _event(f"  {entry}", "log")
+                await asyncio.sleep(0)
+            
+            # Extract and stream discovered components
+            components_found = [
+                p for p in hw_map.get("peripherals", [])
+                if p.get("is_component", False)
+            ]
+            if components_found:
+                for comp in components_found:
+                    comp_id = comp.get("id", "unknown")
+                    comp_name = comp.get("name", "Unknown Component")
+                    comp_type = comp.get("type", "unknown")
+                    ic_name = comp.get("component_ic", {}).get("name", "unknown")
+                    conn_type = comp.get("connection_type", "unknown")
+                    
+                    component_event = {
+                        "type": "component_found",
+                        "component_id": comp_id,
+                        "component_name": comp_name,
+                        "component_type": comp_type,
+                        "ic_name": ic_name,
+                        "connection_type": conn_type,
+                        "source_pdf": filename
+                    }
+                    yield f"data: {json.dumps(component_event)}\n\n"
+                    await asyncio.sleep(0.1)
+            
+            all_maps.append(hw_map)
+            total_peripherals = len(hw_map.get('peripherals', []))
+            total_components = len(components_found)
+            peripherals_summary = f"{total_peripherals} peripherals ({total_components} components)" if total_components > 0 else f"{total_peripherals} peripherals"
+            yield _event(f"  ✅ Hardware map extracted: {peripherals_summary}", "log")
+            await asyncio.sleep(0.2)
+
+            if _upload_controls.get(upload_id, {}).get("stop_requested"):
+                yield _event("⏹️ Stop confirmed — skipping remaining files.", "log")
+                break
         
+        # Summary of extraction
+        yield _event(f"📋 Extraction complete: {len(all_maps)} file(s) succeeded, "
+                    f"{len(failed_files)} failed", "log")
+        
+        if not all_maps:
+            yield _event("All files failed to process", "error")
+            return
+        
+        # Merge hardware maps
+        yield _event("🔗 Merging hardware maps…", "log")
         await asyncio.sleep(0)
-        
-        if not any(s["text"].strip() for s in sections):
-            yield _event(f"  ⚠️  No extractable text in {filename}", "error")
-            failed_files.append(filename)
-            continue
-        
-        yield _event(f"  🤖 @librarian — extracting hardware map "
-                    f"(model: {model or 'auto-detect'})…", "log")
-        await asyncio.sleep(0)
-        
-        # Extract hardware map from sections
-        def _run():
-            return librarian.run_sections(sections, model_override=model, api_key=api_key, disable_heuristic_fallback=disable_heuristic_fallback)
         
         try:
-            hw_map, mode, section_log = await asyncio.wait_for(
-                asyncio.get_event_loop().run_in_executor(None, _run),
-                timeout=40.0  # 40s total timeout for LLM + heuristic extraction
+            merged_map = await asyncio.get_event_loop().run_in_executor(
+                None, librarian.merge_hardware_maps, all_maps
             )
-        except asyncio.TimeoutError:
-            yield _event(f"  ⚠️  @librarian timeout after 40s for {filename}", "error")
-            failed_files.append(filename)
-            continue
         except Exception as e:
-            yield _event(f"  ⚠️  @librarian failed for {filename}: {e}", "error")
-            failed_files.append(filename)
-            continue
+            yield _event(f"Merge failed: {e}", "error")
+            return
         
-        for entry in section_log:
-            yield _event(f"  {entry}", "log")
-            await asyncio.sleep(0)
+        yield _event(f"✅ Maps merged: {len(merged_map.get('peripherals', []))} total peripherals, "
+                    f"{len(merged_map.get('power_rails', []))} power rails", "log")
+        await asyncio.sleep(0)
         
-        # Extract and stream discovered components
-        components_found = [
-            p for p in hw_map.get("peripherals", [])
-            if p.get("is_component", False)
-        ]
-        if components_found:
-            for comp in components_found:
-                comp_id = comp.get("id", "unknown")
-                comp_name = comp.get("name", "Unknown Component")
-                comp_type = comp.get("type", "unknown")
-                ic_name = comp.get("component_ic", {}).get("name", "unknown")
-                conn_type = comp.get("connection_type", "unknown")
-                
-                component_event = {
-                    "type": "component_found",
-                    "component_id": comp_id,
-                    "component_name": comp_name,
-                    "component_type": comp_type,
-                    "ic_name": ic_name,
-                    "connection_type": conn_type,
-                    "source_pdf": filename
-                }
-                yield f"data: {json.dumps(component_event)}\n\n"
-                await asyncio.sleep(0.1)
+        # Store session
+        session_id = str(uuid.uuid4())
+        _sessions[session_id] = {
+            "hw_map": merged_map,
+            "sections": [],
+            "created_at": time.time(),
+            "validation_report": None
+        }
         
-        all_maps.append(hw_map)
-        total_peripherals = len(hw_map.get('peripherals', []))
-        total_components = len(components_found)
-        peripherals_summary = f"{total_peripherals} peripherals ({total_components} components)" if total_components > 0 else f"{total_peripherals} peripherals"
-        yield _event(f"  ✅ Hardware map extracted: {peripherals_summary}", "log")
-        await asyncio.sleep(0.2)
-    
-    # Summary of extraction
-    yield _event(f"📋 Extraction complete: {len(all_maps)} file(s) succeeded, "
-                f"{len(failed_files)} failed", "log")
-    
-    if not all_maps:
-        yield _event("All files failed to process", "error")
-        return
-    
-    # Merge hardware maps
-    yield _event("🔗 Merging hardware maps…", "log")
-    await asyncio.sleep(0)
-    
-    try:
-        merged_map = await asyncio.get_event_loop().run_in_executor(
-            None, librarian.merge_hardware_maps, all_maps
-        )
-    except Exception as e:
-        yield _event(f"Merge failed: {e}", "error")
-        return
-    
-    yield _event(f"✅ Maps merged: {len(merged_map.get('peripherals', []))} total peripherals, "
-                f"{len(merged_map.get('power_rails', []))} power rails", "log")
-    await asyncio.sleep(0)
-    
-    # Store session
-    session_id = str(uuid.uuid4())
-    _sessions[session_id] = {
-        "hw_map": merged_map,
-        "sections": [],
-        "created_at": time.time(),
-        "validation_report": None
-    }
-    
-    # Final upload_done event with merged map
-    # Count components in merged map
-    components = [p for p in merged_map.get("peripherals", []) if p.get("is_component", False)]
-    
-    payload = {
-        "type":        "upload_done",
-        "session_id":  session_id,
-        "mode":        "merged",
-        "board_name":  merged_map.get("board_name", f"Custom {merged_map.get('arch','arm64')}"),
-        "soc":         merged_map.get("soc", "Unknown SoC"),
-        "arch":        merged_map.get("arch", "arm64"),
-        "cpu_core":    merged_map.get("cpu_core", ""),
-        "cpu_count":   merged_map.get("cpu_count", None),
-        "cpu_freq_mhz": merged_map.get("cpu_freq_mhz", None),
-        "ram_mb":      merged_map.get("ram_mb", None),
-        "peripherals": merged_map.get("peripherals", []),
-        "power_rails": merged_map.get("power_rails", []),
-        "files_processed": len(all_maps),
-        "files_failed": len(failed_files),
-        "components_found": len(components),
-    }
-    yield f"data: {json.dumps(payload)}\n\n"
+        # Final upload_done event with merged map
+        # Count components in merged map
+        components = [p for p in merged_map.get("peripherals", []) if p.get("is_component", False)]
+        
+        payload = {
+            "type":        "upload_done",
+            "session_id":  session_id,
+            "mode":        "merged",
+            "board_name":  merged_map.get("board_name", f"Custom {merged_map.get('arch','arm64')}"),
+            "soc":         merged_map.get("soc", "Unknown SoC"),
+            "arch":        merged_map.get("arch", "arm64"),
+            "cpu_core":    merged_map.get("cpu_core", ""),
+            "cpu_count":   merged_map.get("cpu_count", None),
+            "cpu_freq_mhz": merged_map.get("cpu_freq_mhz", None),
+            "ram_mb":      merged_map.get("ram_mb", None),
+            "peripherals": merged_map.get("peripherals", []),
+            "power_rails": merged_map.get("power_rails", []),
+            "files_processed": len(all_maps),
+            "files_failed": len(failed_files),
+            "components_found": len(components),
+        }
+        yield f"data: {json.dumps(payload)}\n\n"
+    finally:
+        if upload_id:
+            _upload_controls.pop(upload_id, None)
 
 
 @app.post("/api/upload")
@@ -389,11 +554,109 @@ async def upload_pdf(
             media_type="text/event-stream",
         )
     
+    upload_id = str(uuid.uuid4())
     return StreamingResponse(
-        _upload_stream(files_data, model, api_key, disable_heuristic_fallback),
+        _upload_stream(files_data, model, api_key, disable_heuristic_fallback, upload_id),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+class URLUploadRequest(BaseModel):
+    urls: list[str]
+    model: str = ""
+    api_key: str = ""
+    disable_heuristic_fallback: str = "false"
+
+
+@app.post("/api/upload-url")
+async def upload_from_url(req: URLUploadRequest):
+    """Accept URLs (HTML, Markdown, GitHub, datasheets) and stream extraction."""
+    if not req.urls:
+        return StreamingResponse(
+            _error_stream("No URLs provided"),
+            media_type="text/event-stream",
+        )
+    
+    upload_id = str(uuid.uuid4())
+    
+    async def _url_stream():
+        """Stream URL content extraction."""
+        try:
+            _upload_controls[upload_id] = {"stop_requested": False, "created_at": time.time()}
+            yield f"data: {json.dumps({'type': 'upload_started', 'upload_id': upload_id})}\n\n"
+            yield _event(f"🔗 Fetching content from {len(req.urls)} URL(s)…", "log")
+            await asyncio.sleep(0.3)
+            
+            files_data = []
+            failed_urls = []
+            
+            for url_idx, url in enumerate(req.urls, 1):
+                if _upload_controls.get(upload_id, {}).get("stop_requested"):
+                    yield _event("⏹️  URL processing stopped", "log")
+                    break
+                
+                yield _event(f"🔗 URL {url_idx}/{len(req.urls)}: {url[:60]}...", "log")
+                await asyncio.sleep(0.2)
+                
+                try:
+                    # Fetch URL content
+                    content, source_type = await asyncio.get_event_loop().run_in_executor(
+                        None, _fetch_url_content, url
+                    )
+                    yield _event(f"  ✓ Fetched ({len(content)} chars, type: {source_type})", "log")
+                    
+                    # Parse into sections
+                    sections = _parse_url_sections(content, source_type, url)
+                    yield _event(f"  ✓ Parsed {len(sections)} section(s)", "log")
+                    
+                    # Simulate "file" with URL as filename
+                    files_data.append((content.encode("utf-8"), f"url-{url_idx}:{url}"))
+                    
+                except Exception as e:
+                    yield _event(f"  ⚠️  Failed to fetch {url}: {str(e)}", "error")
+                    failed_urls.append((url, str(e)))
+            
+            if not files_data:
+                yield _event("❌ No content fetched from any URL", "error")
+                return
+            
+            # Process fetched content through librarian
+            yield _event(f"📚 Processing {len(files_data)} content source(s)…", "log")
+            await asyncio.sleep(0.3)
+            
+            async for event in _upload_stream(
+                files_data, req.model, req.api_key, req.disable_heuristic_fallback, upload_id,
+                is_url=True
+            ):
+                yield event
+            
+            if failed_urls:
+                yield _event(f"⚠️  {len(failed_urls)} URL(s) failed to fetch", "log")
+        
+        except Exception as e:
+            yield _event(f"❌ Error: {str(e)}", "error")
+        finally:
+            _upload_controls.pop(upload_id, None)
+    
+    return StreamingResponse(
+        _url_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+class StopUploadRequest(BaseModel):
+    upload_id: str
+
+
+@app.post("/api/upload/stop")
+async def stop_upload(req: StopUploadRequest):
+    control = _upload_controls.get(req.upload_id)
+    if not control:
+        raise HTTPException(status_code=404, detail="Upload not found or already finished")
+    control["stop_requested"] = True
+    return {"status": "ok", "upload_id": req.upload_id, "stop_requested": True}
 
 
 # ── Validation endpoint ────────────────────────────────────────────────────
@@ -618,7 +881,12 @@ async def _pipeline_stream(session_id: str, selected_ids: list[str], alternative
     yield event("🔬 @kernel_scout — looking up upstream Linux kernel drivers…", "log")
     await asyncio.sleep(0.3)
     try:
-        drivers    = kernel_scout.lookup_drivers(filtered_map, online=False)
+        github_lookup = os.getenv("ENABLE_GITHUB_DRIVER_LOOKUP", "true").lower() in ("1", "true", "yes")
+        try:
+            drivers = kernel_scout.lookup_drivers(filtered_map, online=github_lookup)
+        except Exception as e_online:
+            yield event(f"⚠️  GitHub-enriched lookup failed ({e_online}) — retrying offline", "log")
+            drivers = kernel_scout.lookup_drivers(filtered_map, online=False)
         raci_data  = raci_builder.build(filtered_map, drivers)
         raci_path  = OUTPUT_DIR / f"{session_id}_raci.csv"
         raci_path.write_text(raci_data["raci_csv"])
@@ -630,6 +898,8 @@ async def _pipeline_stream(session_id: str, selected_ids: list[str], alternative
             + (f" | recommended: {rec}" if rec else ""),
             "log"
         )
+        if github_lookup:
+            yield event("🔗 GitHub repo lookup enabled for driver enrichment", "log")
         # store in session for /api/raci
         _sessions[session_id]["raci"] = raci_data
     except Exception as e:

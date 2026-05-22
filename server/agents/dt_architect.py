@@ -6,6 +6,10 @@ Applies pinmux conflict detection before generating output.
 import re
 from typing import Any
 
+
+def _safe_str(value, default: str = "") -> str:
+    return value if isinstance(value, str) else default
+
 # ── Pinmux conflict checker ─────────────────────────────────────────────────────
 
 def check_pinmux_conflicts(peripherals: list[dict]) -> list[tuple[str, str, str]]:
@@ -15,8 +19,8 @@ def check_pinmux_conflicts(peripherals: list[dict]) -> list[tuple[str, str, str]
     pin_map: dict[str, str] = {}
     conflicts = []
     for p in peripherals:
-        addr = p.get("address", "")
-        pid  = p["id"]
+        addr = _safe_str(p.get("address"))
+        pid  = _safe_str(p.get("id"), "unknown")
         if addr and addr in pin_map:
             conflicts.append((addr, pin_map[addr], pid))
         elif addr:
@@ -55,14 +59,14 @@ _BASE_ADDR_MAP = {
 }
 
 def _peripheral_node(p: dict, idx: int) -> str:
-    ptype  = p.get("type", "other")
+    ptype  = _safe_str(p.get("type"), "other")
     compat = _COMPATIBLE_MAP.get(ptype, "generic-device")
-    addr   = p.get("address", "")
+    addr   = _safe_str(p.get("address"))
     reg_addr = int(addr, 16) if addr.startswith("0x") else (_BASE_ADDR_MAP.get(ptype, 0xFF000000) + idx * 0x1000)
     reg_hex = f"{reg_addr:08x}"
-    voltage = p.get("voltage", "3.3V")
-    regulator = p.get("regulator", "vcc_3v3").replace("-", "_")
-    bus_num = re.sub(r"\D", "", p.get("bus", "0")) or "0"
+    voltage = _safe_str(p.get("voltage"), "3.3V")
+    regulator = _safe_str(p.get("regulator"), "vcc_3v3").replace("-", "_")
+    bus_num = re.sub(r"\D", "", _safe_str(p.get("bus"), "0")) or "0"
 
     common = f"""\t\t{p['id']}: {ptype}@{reg_hex} {{
 \t\t\tcompatible = "{compat}";
@@ -71,7 +75,7 @@ def _peripheral_node(p: dict, idx: int) -> str:
 \t\t\t#size-cells = <0>;
 \t\t\tstatus = "okay";
 \t\t\tvcc-supply = <&{regulator}>;
-\t\t\t/* {p.get('description', p['name'])} */"""
+\t\t\t/* {_safe_str(p.get('description'), _safe_str(p.get('name'), 'unknown'))} */"""
 
     extras = ""
     if ptype == "i2c":
@@ -105,8 +109,8 @@ def _peripheral_node(p: dict, idx: int) -> str:
 
 
 def _regulator_node(rail: dict) -> str:
-    name    = rail["name"].replace("-", "_")
-    voltage = rail.get("voltage", "3.3V")
+    name    = _safe_str(rail.get("name"), "vcc_3v3").replace("-", "_")
+    voltage = _safe_str(rail.get("voltage"), "3.3V")
     mv      = int(float(re.sub(r"[Vv]", "", voltage)) * 1_000_000)
     return f"""\t{name}: regulator-{name} {{
 \t\tcompatible = "regulator-fixed";
@@ -120,17 +124,17 @@ def _regulator_node(rail: dict) -> str:
 # ── Public API ──────────────────────────────────────────────────────────────────
 
 def run(hw_map: dict, selected_ids: list[str]) -> str:
-    board_name = hw_map.get("board_name", "Custom")
-    soc        = hw_map.get("soc", "Unknown SoC")
-    arch       = hw_map.get("arch", "arm64")
-    cpu_core   = hw_map.get("cpu_core", "Unknown")
+    board_name = _safe_str(hw_map.get("board_name"), "Custom")
+    soc        = _safe_str(hw_map.get("soc"), "Unknown SoC")
+    arch       = _safe_str(hw_map.get("arch"), "arm64")
+    cpu_core   = _safe_str(hw_map.get("cpu_core"), "Unknown")
 
     # slugify for DTS compatible strings
     board_slug = re.sub(r"[^a-z0-9]+", "-", board_name.lower()).strip("-")
     soc_slug   = re.sub(r"[^a-z0-9]+", "-", soc.lower()).strip("-")
 
-    peripherals = [p for p in hw_map.get("peripherals", []) if p["id"] in selected_ids]
-    power_rails = hw_map.get("power_rails", [])
+    peripherals = [p for p in hw_map.get("peripherals", []) if _safe_str(p.get("id")) in selected_ids]
+    power_rails = hw_map.get("power_rails") or []
 
     # regulators
     reg_nodes = "\n\n".join(_regulator_node(r) for r in power_rails) if power_rails else ""

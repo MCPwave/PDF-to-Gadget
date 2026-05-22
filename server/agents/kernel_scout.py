@@ -14,8 +14,10 @@ Driver status values:
   unknown    — cannot determine; needs investigation
 """
 import json
+import os
 import re
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Optional
 
@@ -107,6 +109,10 @@ _DRIVER_DB: list[tuple[str, str, dict]] = [
     ("BCM2711|BCM283",  "camera",  {"module": "bcm2835-unicam","since": "v5.7","kconfig": "VIDEO_BCM2835_UNICAM","path": "drivers/media/platform/bcm2835/","maintainer": "Dave Stevenson <dave.stevenson@raspberrypi.com>","status": "mainline"}),
     ("RK3[0-9]",        "mipi_csi",{"module": "rkisp1",   "since": "v5.8",  "kconfig": "VIDEO_ROCKCHIP_ISP1", "path": "drivers/media/platform/rockchip/rkisp1/", "maintainer": "Helen Koike <helen.koike@collabora.com>","status": "mainline"}),
     ("i\\.MX|IMX",      "mipi_csi",{"module": "imx8-isi", "since": "v5.17", "kconfig": "VIDEO_IMX8_ISI",      "path": "drivers/media/platform/nxp/imx8-isi/",   "maintainer": "Laurent Pinchart <laurent.pinchart@ideasonboard.com>","status": "mainline"}),
+    # Intel IPU6 — out-of-tree, requires github.com/intel/ipu6-drivers
+    ("Meteor|12th|13th",  "ipu6",     {"module": "intel-ipu6",   "since": "N/A",  "kconfig": "IPU6",                "path": "github.com/intel/ipu6-drivers",           "maintainer": "Intel (ipu6-drivers)",               "status": "vendor"}),
+    ("Meteor|12th|13th",  "mipi_csi", {"module": "intel-ipu6",   "since": "N/A",  "kconfig": "IPU6",                "path": "github.com/intel/ipu6-drivers",           "maintainer": "Intel (ipu6-drivers)",               "status": "vendor"}),
+    ("Meteor|12th|13th",  "camera",   {"module": "intel-ipu6",   "since": "N/A",  "kconfig": "IPU6",                "path": "github.com/intel/ipu6-drivers",           "maintainer": "Intel (ipu6-drivers)",               "status": "vendor"}),
     ("*",               "mipi_csi",{"module": "mipi-csi2","since": "v5.9",  "kconfig": "VIDEO_MIPI_CSI2",     "path": "drivers/media/",                          "maintainer": "Mauro Carvalho Chehab <mchehab@kernel.org>","status": "mainline"}),
     ("*",               "camera",  {"module": "mipi-csi2","since": "v5.9",  "kconfig": "VIDEO_MIPI_CSI2",     "path": "drivers/media/",                          "maintainer": "Mauro Carvalho Chehab <mchehab@kernel.org>","status": "mainline"}),
 
@@ -241,7 +247,30 @@ _COMPONENT_DRIVER_DB: list[tuple[str, str, str, dict]] = [
         "maintainer": "onsemi",
         "status": "vendor",
     }),
-
+    ("camera_sensor", "ov8856", "mipi_csi", {
+        "module": "ov8856",
+        "since": "v5.6",
+        "kconfig": "CONFIG_VIDEO_OV8856",
+        "path": "drivers/media/i2c/ov8856.c",
+        "maintainer": "Antti Laakso <antti.laakso@linux.intel.com>",
+        "status": "mainline",
+    }),
+    ("camera_sensor", "ov7251", "mipi_csi", {
+        "module": "ov7251",
+        "since": "v4.5",
+        "kconfig": "CONFIG_VIDEO_OV7251",
+        "path": "drivers/media/i2c/ov7251.c",
+        "maintainer": "Maxime Ripard <mripard@kernel.org>",
+        "status": "mainline",
+    }),
+    ("camera_sensor", "ov2680", "mipi_csi", {
+        "module": "ov2680",
+        "since": "v4.4",
+        "kconfig": "CONFIG_VIDEO_OV2680",
+        "path": "drivers/media/i2c/ov2680.c",
+        "maintainer": "Rui Miguel Silva <rmfrfs@gmail.com>",
+        "status": "mainline",
+    }),
     # ── Display Controllers ──────────────────────────────────────────────────
     ("display", "ili9341", "spi", {
         "module": "ili9341",
@@ -565,6 +594,57 @@ _GH_HEADERS = {
 }
 
 
+def _github_headers() -> dict:
+    headers = dict(_GH_HEADERS)
+    token = os.getenv("GITHUB_TOKEN") or os.getenv("GH_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return headers
+
+
+def _github_search_repositories(query: str, limit: int = 3) -> list[dict]:
+    """Search GitHub repositories by query; return empty list on any error."""
+    if not query:
+        return []
+    q = urllib.parse.urlencode({
+        "q": f'{query} in:name,description,readme fork:false',
+        "per_page": str(limit),
+        "sort": "stars",
+    })
+    url = f"https://api.github.com/search/repositories?{q}"
+    try:
+        req = urllib.request.Request(url, headers=_github_headers())
+        with urllib.request.urlopen(req, timeout=_GH_TIMEOUT) as r:
+            data = json.loads(r.read())
+        return data.get("items", [])[:limit]
+    except Exception:
+        return []
+
+
+def _github_search_code_in_repo(query: str, repo_full_name: str) -> Optional[dict]:
+    """Search GitHub code within one repo; return first hit or None."""
+    if not query or not repo_full_name:
+        return None
+    q = urllib.parse.urlencode({
+        "q": f'"{query}" repo:{repo_full_name}',
+        "per_page": "1",
+    })
+    url = f"https://api.github.com/search/code?{q}"
+    try:
+        req = urllib.request.Request(url, headers=_github_headers())
+        with urllib.request.urlopen(req, timeout=_GH_TIMEOUT) as r:
+            data = json.loads(r.read())
+        items = data.get("items", [])
+        if items:
+            return {
+                "github_path": items[0].get("path", ""),
+                "github_url": items[0].get("html_url", ""),
+            }
+    except Exception:
+        pass
+    return None
+
+
 def _github_search_driver(module_name: str) -> Optional[dict]:
     """
     Try to find driver in torvalds/linux via GitHub search API.
@@ -578,7 +658,7 @@ def _github_search_driver(module_name: str) -> Optional[dict]:
     })
     url = f"https://api.github.com/search/code?{query}"
     try:
-        req = urllib.request.Request(url, headers=_GH_HEADERS)
+        req = urllib.request.Request(url, headers=_github_headers())
         with urllib.request.urlopen(req, timeout=_GH_TIMEOUT) as r:
             data = json.loads(r.read())
         items = data.get("items", [])
@@ -592,7 +672,327 @@ def _github_search_driver(module_name: str) -> Optional[dict]:
     return None
 
 
+def _repo_candidates(peripheral: dict, driver_info: dict) -> list[str]:
+    """Build manufacturer-repo search terms from peripheral metadata."""
+    candidates = []
+    component_ic = peripheral.get("component_ic") if isinstance(peripheral.get("component_ic"), dict) else {}
+    for raw in (
+        peripheral.get("manufacturer"),
+        component_ic.get("vendor"),
+        component_ic.get("name"),
+        peripheral.get("name"),
+        driver_info.get("maintainer"),
+    ):
+        if not isinstance(raw, str):
+            continue
+        cleaned = raw.strip()
+        if not cleaned:
+            continue
+        cleaned = re.sub(r"<.*?>", "", cleaned).strip()
+        cleaned = cleaned.split("@")[0].strip()
+        if cleaned and cleaned not in candidates:
+            candidates.append(cleaned)
+    return candidates
+
+
+def _lookup_manufacturer_repo(peripheral: dict, driver_info: dict) -> dict:
+    """
+    Try to find a manufacturer GitHub repo for the component or driver.
+    Returns repo_url/repo_name plus optional source file hit.
+    """
+    module_name = driver_info.get("module", "")
+    
+    # Special case: vendor-specific components with hardcoded repos
+    for comp_key, comp_info in _VENDOR_COMPONENTS.items():
+        if module_name == comp_info["module"]:
+            repo = comp_info.get("github_repo", "")
+            if repo:
+                repo_url = f"https://github.com/{repo}" if "/" in repo else repo
+                return {
+                    "github_repo_name": repo,
+                    "github_repo_url": repo_url,
+                    "github_url": repo_url,
+                    "github_path": comp_info.get("path", ""),
+                }
+    
+    component_ic = peripheral.get("component_ic") if isinstance(peripheral.get("component_ic"), dict) else {}
+    ic_name = component_ic.get("name", "") or peripheral.get("name", "")
+    for term in _repo_candidates(peripheral, driver_info)[:3]:
+        repos = _github_search_repositories(term, limit=3)
+        if not repos:
+            continue
+
+        repo = repos[0]
+        full_name = repo.get("full_name", "")
+        repo_url = repo.get("html_url", "")
+        if not full_name or not repo_url:
+            continue
+
+        # Prefer concrete code hit in repo.
+        for q in (module_name, ic_name, peripheral.get("name", "")):
+            if not q:
+                continue
+            hit = _github_search_code_in_repo(q, full_name)
+            if hit:
+                return {
+                    "github_repo_name": full_name,
+                    "github_repo_url": repo_url,
+                    "github_url": hit.get("github_url", ""),
+                    "github_path": hit.get("github_path", ""),
+                }
+
+        # No file hit, still expose repo candidate.
+        return {
+            "github_repo_name": full_name,
+            "github_repo_url": repo_url,
+            "github_url": "",
+            "github_path": "",
+        }
+
+    return {
+        "github_repo_name": "",
+        "github_repo_url": "",
+        "github_url": "",
+        "github_path": "",
+    }
+
+
 # ── Public API ─────────────────────────────────────────────────────────────────
+
+# Vendor-specific component patterns → driver info mapping
+_VENDOR_COMPONENTS = {
+    # Intel components
+    "ipu6": {
+        "pattern": r"ipu[56]|imaging.*processor.*6",
+        "module": "intel-ipu6",
+        "kconfig": "IPU6",
+        "since": "N/A",
+        "path": "github.com/intel/ipu6-drivers",
+        "status": "vendor",
+        "maintainer": "Intel (ipu6-drivers)",
+        "github_repo": "intel/ipu6-drivers",
+    },
+    "arc-gpu": {
+        "pattern": r"arc.*(?:graphics|gpu)|intel.*arc",
+        "module": "i915-xe",
+        "kconfig": "DRM_XE",
+        "since": "v6.2",
+        "path": "drivers/gpu/drm/xe/",
+        "status": "mainline",
+        "maintainer": "Intel (DRM/GPU)",
+        "github_repo": "torvalds/linux",
+    },
+    "iris-gpu": {
+        "pattern": r"iris.*(?:graphics|gpu)|intel.*iris",
+        "module": "i915",
+        "kconfig": "DRM_I915",
+        "since": "v3.2",
+        "path": "drivers/gpu/drm/i915/",
+        "status": "mainline",
+        "maintainer": "Intel (DRM/GPU)",
+        "github_repo": "torvalds/linux",
+    },
+    "gvt": {
+        "pattern": r"gvt|graphics.*virtualization",
+        "module": "kvmgt",
+        "kconfig": "DRM_I915_GVT",
+        "since": "v4.10",
+        "path": "drivers/gpu/drm/i915/gvt/",
+        "status": "mainline",
+        "maintainer": "Intel (GVT)",
+        "github_repo": "torvalds/linux",
+    },
+    "atsc-tuner": {
+        "pattern": r"mceusb|atsc|tuner.*(?:at86rf|si)|media.*tuner",
+        "module": "mceusb",
+        "kconfig": "DVB_USB_MCEUSB",
+        "since": "v2.6.37",
+        "path": "drivers/media/usb/dvb-usb-v2/",
+        "status": "mainline",
+        "maintainer": "Mauro Carvalho Chehab",
+        "github_repo": "torvalds/linux",
+    },
+    "movidius-vpu": {
+        "pattern": r"movidius|myriad|neural.*engine|vpu",
+        "module": "myriad",
+        "kconfig": "MOVIDIUS_VPU",
+        "since": "N/A",
+        "path": "github.com/intel/openvino",
+        "status": "vendor",
+        "maintainer": "Intel (OpenVINO)",
+        "github_repo": "intel/openvino",
+    },
+}
+
+# GPU-specific driver mapping (model name → driver info)
+_GPU_DRIVERS = {
+    # NVIDIA GPUs
+    "rtx 4090": {
+        "module": "nvidia",
+        "kconfig": "NVIDIA_DRIVER",
+        "since": "N/A",
+        "path": "github.com/NVIDIA/open-gpu-kernel-modules",
+        "status": "vendor",
+        "maintainer": "NVIDIA",
+    },
+    "rtx 4080": {
+        "module": "nvidia",
+        "kconfig": "NVIDIA_DRIVER",
+        "since": "N/A",
+        "path": "github.com/NVIDIA/open-gpu-kernel-modules",
+        "status": "vendor",
+        "maintainer": "NVIDIA",
+    },
+    "rtx 4070": {
+        "module": "nvidia",
+        "kconfig": "NVIDIA_DRIVER",
+        "since": "N/A",
+        "path": "github.com/NVIDIA/open-gpu-kernel-modules",
+        "status": "vendor",
+        "maintainer": "NVIDIA",
+    },
+    "rtx 40 series": {
+        "module": "nvidia",
+        "kconfig": "NVIDIA_DRIVER",
+        "since": "N/A",
+        "path": "github.com/NVIDIA/open-gpu-kernel-modules",
+        "status": "vendor",
+        "maintainer": "NVIDIA",
+    },
+    "tesla": {
+        "module": "nvidia",
+        "kconfig": "NVIDIA_DRIVER",
+        "since": "N/A",
+        "path": "github.com/NVIDIA/open-gpu-kernel-modules",
+        "status": "vendor",
+        "maintainer": "NVIDIA",
+    },
+    # AMD GPUs
+    "radeon rx": {
+        "module": "amdgpu",
+        "kconfig": "DRM_AMDGPU",
+        "since": "v4.2",
+        "path": "drivers/gpu/drm/amd/amdgpu/",
+        "status": "mainline",
+        "maintainer": "AMD (amdgpu)",
+    },
+    "radeon": {
+        "module": "radeon",
+        "kconfig": "DRM_RADEON",
+        "since": "v2.6.34",
+        "path": "drivers/gpu/drm/radeon/",
+        "status": "mainline",
+        "maintainer": "AMD",
+    },
+    "mi300": {
+        "module": "amdgpu",
+        "kconfig": "DRM_AMDGPU",
+        "since": "v6.3",
+        "path": "drivers/gpu/drm/amd/amdgpu/",
+        "status": "mainline",
+        "maintainer": "AMD (amdgpu)",
+    },
+    # Intel GPUs
+    "arc graphics": {
+        "module": "i915-xe",
+        "kconfig": "DRM_XE",
+        "since": "v6.2",
+        "path": "drivers/gpu/drm/xe/",
+        "status": "mainline",
+        "maintainer": "Intel (DRM/GPU)",
+    },
+    "iris graphics": {
+        "module": "i915",
+        "kconfig": "DRM_I915",
+        "since": "v3.2",
+        "path": "drivers/gpu/drm/i915/",
+        "status": "mainline",
+        "maintainer": "Intel (DRM/GPU)",
+    },
+    "intel gpu": {
+        "module": "i915",
+        "kconfig": "DRM_I915",
+        "since": "v3.2",
+        "path": "drivers/gpu/drm/i915/",
+        "status": "mainline",
+        "maintainer": "Intel (DRM/GPU)",
+    },
+}
+
+
+def _is_generic_component(peripheral_name: str, peripheral_type: str) -> bool:
+    """
+    Check if component is generic (non-vendor specific).
+    Generic components should not go through driver lookup.
+    
+    Examples of generic: "Audio", "GPU", "Camera", "Ethernet", "Display"
+    Examples of specific: "RTX 4090", "Intel Arc", "IPU6", "ov8856", "mcp3208"
+    """
+    if not peripheral_name:
+        return True
+    
+    name_lower = peripheral_name.lower().strip()
+    type_lower = (peripheral_type or "").lower().strip()
+    
+    # Generic/too-vague component names (single word, no vendor/model info)
+    generic_patterns = [
+        r"^(unknown|generic|device|component|peripheral|module|chip|ic|board)$",
+        r"^(audio|sound)$",
+        r"^(display|screen|panel)$",
+        r"^(camera|webcam)$",
+        r"^(usb|connector|port|interface)$",
+        r"^(power|regulator|battery)$",
+        r"^(sensor|thermistor)$",
+        r"^(ethernet|network|lan|wlan)$",
+        r"^(gpio|pin|connector)$",
+        r"^(clock|oscillator|pll)$",
+        r"^gpu$",  # plain "GPU" is generic
+        r"^controller$",
+    ]
+    
+    # Check if name matches generic pattern
+    for pattern in generic_patterns:
+        if re.match(pattern, name_lower):
+            return True
+    
+    # Single word + no numbers/vendor = likely generic
+    if " " not in name_lower and not re.search(r"[0-9]", name_lower):
+        # Exception: if has vendor keyword, it's specific
+        vendors = ["intel", "nvidia", "amd", "broadcom", "qualcomm", "arm", "st", "nxp", "ti", "samsung", "onsemi", "nvidia"]
+        if not any(v in name_lower for v in vendors):
+            return True
+    
+    return False
+
+
+def detect_vendor_components(peripheral_name: str, peripheral_type: str) -> Optional[dict]:
+    """
+    Detect vendor-specific components (IPU6, Arc GPU, etc.) from peripheral name/type.
+    Returns driver info dict if found, else None.
+    """
+    name_lower = (peripheral_name or "").lower()
+    type_lower = (peripheral_type or "").lower()
+    search_text = f"{name_lower} {type_lower}"
+    
+    # GPU-specific lookup (preferred for gpu type)
+    if "gpu" in type_lower:
+        for gpu_model, gpu_info in _GPU_DRIVERS.items():
+            if gpu_model.lower() in name_lower:
+                return dict(gpu_info)
+    
+    # Vendor component lookup
+    for comp_key, comp_info in _VENDOR_COMPONENTS.items():
+        if re.search(comp_info["pattern"], search_text, re.I):
+            return {
+                "module": comp_info["module"],
+                "kconfig": comp_info["kconfig"],
+                "since": comp_info["since"],
+                "path": comp_info["path"],
+                "status": comp_info["status"],
+                "maintainer": comp_info["maintainer"],
+            }
+    return None
+
 
 def lookup_drivers(
     hw_map: dict,
@@ -615,13 +1015,60 @@ def lookup_drivers(
     results: list[dict] = []
 
     for p in hw_map.get("peripherals", []):
-        ptype = p.get("type", "other").lower()
+        if not isinstance(p, dict):
+            continue
+        ptype_raw = p.get("type", "other")
+        ptype = ptype_raw.lower() if isinstance(ptype_raw, str) and ptype_raw else "other"
         pid   = p.get("id", "")
         pname = p.get("name", pid)
+        
+        # Don't confuse touch controllers with GPIO pins
+        # Touch (capacitive/resistive) uses I2C/SPI touchscreen drivers, not GPIO
+        if "touch" in pname.lower() and "gpio" in ptype.lower():
+            ptype = "touchscreen"  # Correct type for touch controllers
 
-        info = _lookup_db(soc, ptype)
+        # Skip driver lookup for generic (non-vendor-specific) components
+        is_generic = _is_generic_component(pname, ptype)
+        
+        # Try vendor-specific detection FIRST (before generic DB lookup)
+        info = detect_vendor_components(pname, ptype)
+        
+        # Fall back to component DB if no vendor match (check specific IC names like "goodix")
+        if info is None and not is_generic:
+            # Try multiple lookups: full name, first/last words, common IC model patterns
+            words = pname.lower().split()
+            candidates = [pname.lower(), words[0] if words else pname.lower(), words[-1] if words else pname.lower()]
+            # Remove duplicates
+            candidates = list(dict.fromkeys(candidates))
+            
+            for conn_type in ["i2c", "spi", "mipi_csi"]:
+                for ic_candidate in candidates:
+                    result = lookup_component_driver(ptype, ic_candidate, conn_type)
+                    if result.get("status") != "unknown":
+                        info = result
+                        break
+                if info:
+                    break
+        
+        # Fall back to generic driver DB if no component/vendor match AND not a generic component
+        if info is None and not is_generic:
+            info = _lookup_db(soc, ptype)
+        manufacturer_repo = {"github_repo_name": "", "github_repo_url": "", "github_url": "", "github_path": ""}
+        if online and isinstance(p, dict):
+            try:
+                manufacturer_repo = _lookup_manufacturer_repo(p, info or {})
+            except Exception:
+                manufacturer_repo = {"github_repo_name": "", "github_repo_url": "", "github_url": "", "github_path": ""}
 
         if info is None:
+            # Determine reason for no driver info
+            if is_generic:
+                notes = "Generic component (no vendor/model specified). Use specific component names (e.g., 'RTX 4090' instead of 'GPU')."
+                effort = "N/A"
+            else:
+                notes = "No driver found in knowledge base."
+                effort = "investigate"
+            
             entry = {
                 "peripheral_id":   pid,
                 "peripheral_name": pname,
@@ -633,8 +1080,10 @@ def lookup_drivers(
                 "maintainer":      "unknown",
                 "status":          "unknown",
                 "github_url":      "",
-                "effort":          "investigate",
-                "notes":           "No driver found in knowledge base.",
+                "github_repo_name": "",
+                "github_repo_url": "",
+                "effort":          effort,
+                "notes":           notes,
             }
         else:
             status = info["status"]
@@ -647,10 +1096,16 @@ def lookup_drivers(
             }.get(status, "investigate")
 
             gh_url = ""
-            if online and status == "unknown":
-                gh = _github_search_driver(info.get("module", ""))
-                if gh:
-                    gh_url = gh.get("github_url", "")
+            gh_repo_name = ""
+            gh_repo_url = ""
+            if online:
+                gh_url = manufacturer_repo.get("github_url", "")
+                gh_repo_name = manufacturer_repo.get("github_repo_name", "")
+                gh_repo_url = manufacturer_repo.get("github_repo_url", "")
+                if not gh_url and status == "unknown":
+                    gh = _github_search_driver(info.get("module", ""))
+                    if gh:
+                        gh_url = gh.get("github_url", "")
 
             entry = {
                 "peripheral_id":   pid,
@@ -663,8 +1118,10 @@ def lookup_drivers(
                 "maintainer":      info.get("maintainer",  "unknown"),
                 "status":          status,
                 "github_url":      gh_url,
+                "github_repo_name": gh_repo_name,
+                "github_repo_url": gh_repo_url,
                 "effort":          effort,
-                "notes":           "",
+                "notes":           "Manufacturer repo checked" if gh_repo_url else "",
             }
 
         results.append(entry)

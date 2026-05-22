@@ -20,6 +20,11 @@ import urllib.parse
 import urllib.request
 from typing import List, Dict, Optional, Tuple
 
+_CAVEMAN_PROMPT_RULE = (
+    "Use caveman compression internally: short, direct reasoning, no filler. "
+    "Output must be strict valid JSON only."
+)
+
 
 def _ollama_list_models(host: str) -> List[str]:
     """Return model names available in Ollama; empty list on any error."""
@@ -42,7 +47,8 @@ def _ollama_chat(host: str, model: str, prompt: str) -> str:
         }).encode(),
         headers={"Content-Type": "application/json"},
     )
-    with urllib.request.urlopen(req, timeout=180) as resp:
+    # No client-side timeout for local LLM calls; user can stop extraction from UI.
+    with urllib.request.urlopen(req) as resp:
         data = json.loads(resp.read())
     return data["message"]["content"]
 
@@ -123,7 +129,11 @@ def _anthropic_api(api_key: str, model: str, prompt: str) -> Dict:
             "model": model,
             "max_tokens": 2048,
             "messages": [{"role": "user", "content": prompt}],
-            "system": "You are a hardware engineer. Extract components from datasheets. Always respond with valid JSON.",
+            "system": (
+                "You are a hardware engineer. "
+                + _CAVEMAN_PROMPT_RULE
+                + " Extract components from datasheets."
+            ),
         }).encode(),
         headers={
             "Content-Type": "application/json",
@@ -167,6 +177,7 @@ def detect_components_with_llm(
     # Compact prompt optimized for fast models
     # Compact prompt optimized for fast models
     prompt = f"""Extract components from datasheet. Return JSON only.
+{_CAVEMAN_PROMPT_RULE}
 
 TEXT:
 {pdf_text[:500]}

@@ -86,8 +86,8 @@ def _uc_driver_status(driver_status: str, since: str, uc_kernel: Tuple[int, int]
 # ── Public API ─────────────────────────────────────────────────────────────────
 
 def build(hw_map: dict, drivers: List[Dict]) -> dict:
-    board = hw_map.get("board_name", "Custom Board")
-    soc   = hw_map.get("soc", "Unknown SoC")
+    board = hw_map.get("board_name") or "Custom Board"
+    soc   = hw_map.get("soc") or "Unknown SoC"
 
     rows        = _build_rows(drivers)
     recommended = _recommend_uc(rows)
@@ -124,6 +124,8 @@ def _build_rows(drivers: List[Dict]) -> List[Dict]:
             "status":        drv_status,
             "effort":        d.get("effort", "investigate"),
             "github_url":    d.get("github_url", ""),
+            "github_repo_name": d.get("github_repo_name", ""),
+            "github_repo_url": d.get("github_repo_url", ""),
             # UC availability
             "UC22": uc_status["UC22"],
             "UC24": uc_status["UC24"],
@@ -203,6 +205,7 @@ def _to_html(rows: List[Dict], board: str, soc: str, recommended: str) -> str:
         <th>Peripheral</th>
         <th>Type</th>
         <th>Driver Module</th>
+        <th>Repo</th>
         <th>Since</th>
         <th>Kconfig</th>
         <th>Status</th>
@@ -228,6 +231,13 @@ def _to_html(rows: List[Dict], board: str, soc: str, recommended: str) -> str:
             f'{html_lib.escape(r["driver_module"])}</a>'
             if gh else html_lib.escape(r["driver_module"])
         )
+        repo_url = r.get("github_repo_url", "")
+        repo_name = r.get("github_repo_name", "")
+        repo_cell = (
+            f'<a href="{html_lib.escape(repo_url)}" target="_blank">'
+            f'{html_lib.escape(repo_name)}</a>'
+            if repo_url else html_lib.escape(repo_name or "—")
+        )
 
         src = r.get("source_path", "")
         src_tip = html_lib.escape(src) if src not in ("N/A", "unknown", "") else ""
@@ -248,6 +258,7 @@ def _to_html(rows: List[Dict], board: str, soc: str, recommended: str) -> str:
         <td><strong>{html_lib.escape(r['peripheral'])}</strong></td>
         <td><code>{html_lib.escape(r['type'])}</code></td>
         <td>{mod_cell}</td>
+        <td>{repo_cell}</td>
         <td>{html_lib.escape(r['kernel_since'])}</td>
         <td><code title="{src_tip}">{html_lib.escape(r['kconfig'])}</code></td>
         <td><span class="raci-badge" style="background:{bg};color:{fg};">{html_lib.escape(status)}</span></td>
@@ -294,9 +305,9 @@ def _to_csv(rows: List[Dict]) -> str:
     buf    = io.StringIO()
     fields = ["peripheral", "type", "driver_module", "kernel_since",
               "kconfig", "source_path", "status", "effort",
+              "github_repo_name", "github_repo_url",
               "UC22", "UC24", "UC26", "R", "A", "C", "I"]
     w = csv.DictWriter(buf, fieldnames=fields, extrasaction="ignore")
     w.writeheader()
     w.writerows(rows)
     return buf.getvalue()
-

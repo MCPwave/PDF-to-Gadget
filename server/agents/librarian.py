@@ -96,11 +96,17 @@ def _classify_section(text: str) -> str:
 
 # ── Prompt builders ────────────────────────────────────────────────────────────
 
+_CAVEMAN_PROMPT_RULE = (
+    "Use caveman compression internally: short, direct reasoning, no filler. "
+    "Output must still be strict valid JSON only."
+)
+
 def _overview_prompt(text: str) -> str:
     excerpt = text[:6000]
     return f"""You are @librarian, a hardware engineer. This is the OVERVIEW/FEATURES section of a datasheet.
 
 Extract board identity and list ALL interfaces/peripherals mentioned.
+{_CAVEMAN_PROMPT_RULE}
 Return ONLY valid JSON:
 {{
   "board": "<Full product name, e.g. 'Raspberry Pi 4 Model B'. null if not clear>",
@@ -129,6 +135,7 @@ def _peripheral_prompt(text: str, heading: str) -> str:
     return f"""You are @librarian. This is the "{heading}" section of a hardware datasheet.
 
 Extract EVERY hardware interface or peripheral described. Include ALL numbered instances.
+{_CAVEMAN_PROMPT_RULE}
 Return ONLY valid JSON:
 {{
   "peripherals": [
@@ -151,6 +158,7 @@ def _register_prompt(text: str, heading: str) -> str:
     return f"""You are @librarian. This is the "{heading}" memory map / register section.
 
 Extract peripheral base addresses. Return ONLY valid JSON:
+{_CAVEMAN_PROMPT_RULE}
 {{
   "peripherals": [
     {{"id":"<snake_case>","name":"<name>","type":"<{_PERIPHERAL_TYPES}>",
@@ -170,6 +178,7 @@ def _power_prompt(text: str) -> str:
     return f"""You are @librarian. This is the power management section of a hardware datasheet.
 
 Extract ALL power rails/regulators. Return ONLY valid JSON:
+{_CAVEMAN_PROMPT_RULE}
 {{
   "power_rails": [
     {{"name":"<rail name e.g. vcc-3v3>","voltage":"<e.g. 3.3V>",
@@ -188,6 +197,7 @@ def _pinmux_prompt(text: str, heading: str) -> str:
     return f"""You are @librarian. This is the "{heading}" pin/signal description section.
 
 Extract GPIO banks and named signal groups as peripherals. Return ONLY valid JSON:
+{_CAVEMAN_PROMPT_RULE}
 {{
   "peripherals": [
     {{"id":"<snake_case>","name":"<name>","type":"gpio",
@@ -311,16 +321,28 @@ def _fast_component_extraction(pdf_text: str) -> list[dict]:
     """
     Quick keyword-based component extraction (fallback while LLM is slow).
     Detects cameras, GPUs, audio, displays, sensors by simple pattern matching.
+    Includes vendor-specific components: Intel IPU6, Arc GPU, GVT, etc.
     """
     components = []
     import re
     
-    # Camera patterns
+    # ── Vendor-specific components ──────────────────────────────────────────────
+    vendor_patterns = [
+        (r"ipu\s*[56]|intel.*?imaging.*?processor.*?[56]", "Intel IPU6", "ipu6"),
+        (r"intel.*?arc\s+(?:graphics|gpu|a\d{3})|arc\s+(?:graphics|gpu|a\d{3})", "Intel Arc GPU", "arc_gpu"),
+        (r"intel.*?iris\s+(?:graphics|gpu|xe)", "Intel Iris GPU", "iris_gpu"),
+        (r"intel.*?(?:gvt|graphics.*?virtual)", "Intel GVT (Graphics Virtualization)", "gvt"),
+        (r"movidius|myriad.*?vpu|neural.*?processing.*?unit", "Intel Movidius VPU", "movidius_vpu"),
+    ]
+    
+    # Camera patterns (enhanced with vendor-specific sensors)
     camera_patterns = [
+        (r"ov8856|ov7251|ov2680|ar0521|imx[0-9]{3}|imx\d+", "Camera Sensor"),
         (r"(?:fhd|hd|2k|4k|1080p|2160p|720p).*?(?:camera|webcam|ipu|csi|mipi)", "Camera"),
         (r"(?:webcam|web camera).*?(?:fhd|hd|1080|2k|4k)", "Webcam"),
         (r"windows\s+hello.*?(?:camera|webcam|ipu)", "Windows Hello Camera"),
         (r"ipu\d+.*?(?:camera|imaging|processor)", "IPU Camera"),
+        (r"mipi.*?csi|csi.*?mipi", "MIPI CSI Camera"),
     ]
     
     # GPU patterns (order matters: specific models first, generic last)
@@ -365,6 +387,13 @@ def _fast_component_extraction(pdf_text: str) -> list[dict]:
     text_lower = pdf_text.lower()
     found_comps = {}
     gpu_matches = []  # Collect all GPU matches, then deduplicate
+    
+    # Vendor-specific extraction
+    for pattern, display_name, comp_type in vendor_patterns:
+        if re.search(pattern, text_lower):
+            key = f"vendor_{comp_type}"
+            if key not in found_comps:
+                found_comps[key] = {"name": display_name, "type": comp_type}
     
     for pattern, name in camera_patterns:
         if re.search(pattern, text_lower):
@@ -564,6 +593,9 @@ def merge_hardware_maps(maps_list: list[dict]) -> dict:
         }
     
     warnings = []
+
+    def _safe_strip(value) -> str:
+        return value.strip() if isinstance(value, str) else ""
     
     # Filter out empty maps
     valid_maps = []
@@ -636,8 +668,8 @@ def merge_hardware_maps(maps_list: list[dict]) -> dict:
         for p in peripherals:
             if not isinstance(p, dict):
                 continue
-            bus_name = p.get("bus", "").strip()
-            ptype = p.get("type", "").strip()
+            bus_name = _safe_strip(p.get("bus"))
+            ptype = _safe_strip(p.get("type"))
             
             if not bus_name or not ptype:
                 result["peripherals"].append(p)
@@ -703,7 +735,7 @@ def merge_hardware_maps(maps_list: list[dict]) -> dict:
         for rail in hw_map.get("power_rails", []):
             if not isinstance(rail, dict):
                 continue
-            rail_name = rail.get("name", "").strip()
+            rail_name = _safe_strip(rail.get("name"))
             if not rail_name:
                 continue
             
@@ -713,7 +745,7 @@ def merge_hardware_maps(maps_list: list[dict]) -> dict:
                     "name": rail_name,
                     "voltage": rail.get("voltage"),
                     "current_ma": rail.get("current_ma"),
-                    "supplies": list(rail.get("supplies", [])),
+                    "supplies": list(rail.get("supplies") or []),
                 }
                 seen_rails[rail_name] = new_rail
                 result["power_rails"].append(new_rail)
@@ -784,7 +816,8 @@ def _ollama_chat(host: str, model: str, prompt: str) -> str:
         method="POST",
         headers={"Content-Type": "application/json"},
     )
-    with urllib.request.urlopen(req, timeout=120) as r:
+    # No client-side timeout for local LLM calls; user can stop extraction from UI.
+    with urllib.request.urlopen(req) as r:
         data = json.loads(r.read())
     return data["message"]["content"]
 
@@ -823,7 +856,8 @@ def _try_lm_studio(prompt: str) -> dict:
         method="POST",
         headers={"Content-Type": "application/json", "Authorization": "Bearer lm-studio"},
     )
-    with urllib.request.urlopen(req, timeout=120) as r:
+    # No client-side timeout for local LLM calls; user can stop extraction from UI.
+    with urllib.request.urlopen(req) as r:
         data = json.loads(r.read())
     return json.loads(_strip_fences(data["choices"][0]["message"]["content"]))
 
@@ -1488,6 +1522,7 @@ def run_sections(
     model_override: str = "",
     api_key: str = "",
     disable_heuristic_fallback: str = "",
+    should_stop=None,
 ) -> tuple[dict, str, list[str]]:
     """
     Section-by-section extraction. Returns (hw_map, mode, log_lines).
@@ -1498,9 +1533,12 @@ def run_sections(
         model_override: LLM model override
         api_key: LLM API key
         disable_heuristic_fallback: "true"/"1"/"yes" to disable fallback to heuristics
+        should_stop: Optional callback that returns True when extraction should stop
     """
     # imported here to avoid circular issue with run_sections defined above
-    merged_raw, mode, log = _run_sections_internal(sections, model_override, api_key, disable_heuristic_fallback)
+    merged_raw, mode, log = _run_sections_internal(
+        sections, model_override, api_key, disable_heuristic_fallback, should_stop
+    )
     return _normalise_hw_map(merged_raw), mode, log
 
 
@@ -1544,7 +1582,7 @@ def _quick_llm_probe(model_str: str, api_key: str) -> bool:
     return False
 
 
-def _run_sections_internal(sections, model_override, api_key, disable_heuristic_fallback=""):
+def _run_sections_internal(sections, model_override, api_key, disable_heuristic_fallback="", should_stop=None):
     """Internal implementation (before normalisation)."""
     merged: dict = {}
     mode = "heuristic"
@@ -1565,6 +1603,10 @@ def _run_sections_internal(sections, model_override, api_key, disable_heuristic_
             log.append(f"  ⚠️  LLM unavailable (using heuristic fallback)")
 
     for i, sec in enumerate(sections):
+        if callable(should_stop) and should_stop():
+            log.append("  ⏹️ Stop requested — returning partial extraction")
+            break
+
         text    = sec.get("text", "").strip()
         heading = sec.get("heading", f"Section {i+1}")
         p_start = sec.get("page_start", "?")
@@ -1736,4 +1778,3 @@ def run(pdf_text: str, model_override: str = "", api_key: str = "") -> tuple[dic
                  "page_start": 1, "page_end": 1}]
     hw, mode, _ = run_sections(sections, model_override=model_override, api_key=api_key)
     return hw, mode
-

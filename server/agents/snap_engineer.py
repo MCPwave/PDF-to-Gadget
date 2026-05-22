@@ -4,6 +4,9 @@ Generates gadget.yaml and snapcraft.yaml for Ubuntu Core Gadget Snap.
 """
 import re
 
+def _safe_str(value, default: str = "") -> str:
+    return value if isinstance(value, str) else default
+
 
 _ARCH_MAP = {
     "arm64": {"snap_arch": "arm64", "cross_pkg": "libc6-dev-arm64-cross", "gcc": "gcc-aarch64-linux-gnu"},
@@ -28,18 +31,20 @@ _INTERFACE_MAP = {
 }
 
 def _gadget_yaml(hw_map: dict, selected: list[dict]) -> str:
-    board_name = hw_map.get("board_name", "Custom")
-    soc  = hw_map.get("soc", "custom-board")
-    arch = hw_map.get("arch", "arm64")
+    board_name = _safe_str(hw_map.get("board_name"), "Custom")
+    soc  = _safe_str(hw_map.get("soc"), "custom-board")
+    arch = _safe_str(hw_map.get("arch"), "arm64")
     a    = _ARCH_MAP.get(arch, _ARCH_MAP["arm64"])
 
     slots_lines = []
     for p in selected:
-        ptype  = p.get("type", "other")
+        ptype  = _safe_str(p.get("type"), "other")
         iface, label_tmpl = _INTERFACE_MAP.get(ptype, _INTERFACE_MAP["other"])
-        label  = label_tmpl.format(bus=p.get("bus", p["id"]).lower())
+        bus_or_id = _safe_str(p.get("bus")) or _safe_str(p.get("id"), "node")
+        label  = label_tmpl.format(bus=bus_or_id.lower())
+        desc = _safe_str(p.get("description")) or _safe_str(p.get("name"), "unnamed")
         slots_lines.append(
-            f"  {label}:\n    interface: {iface}\n    # {p.get('description', p['name'])}"
+            f"  {label}:\n    interface: {iface}\n    # {desc}"
         )
 
     slots_block = "\n".join(slots_lines) if slots_lines else "  # no hardware slots defined"
@@ -78,14 +83,14 @@ slots:
 
 
 def _snapcraft_yaml(hw_map: dict, selected: list[dict]) -> str:
-    board_name = hw_map.get("board_name", "Custom")
-    soc  = hw_map.get("soc", "custom-board")
-    arch = hw_map.get("arch", "arm64")
+    board_name = _safe_str(hw_map.get("board_name"), "Custom")
+    soc  = _safe_str(hw_map.get("soc"), "custom-board")
+    arch = _safe_str(hw_map.get("arch"), "arm64")
     a    = _ARCH_MAP.get(arch, _ARCH_MAP["arm64"])
     slug = re.sub(r"[^a-z0-9]+", "-", board_name.lower()).strip("-")
 
     slots_section = "\n".join(
-        f"  {_INTERFACE_MAP.get(p.get('type','other'), _INTERFACE_MAP['other'])[1].format(bus=p.get('bus', p['id']).lower())}:"
+        f"  {_INTERFACE_MAP.get(_safe_str(p.get('type'), 'other'), _INTERFACE_MAP['other'])[1].format(bus=(_safe_str(p.get('bus')) or _safe_str(p.get('id'), 'node')).lower())}:"
         for p in selected
     )
 
@@ -258,22 +263,24 @@ def _mermaid_diagram(hw_map: dict, selected: list[dict]) -> str:
     SoC is the biggest block, centred; large peripherals go on top; small
     peripherals flank the SoC left/right; the rest fill rows below.
     """
-    board_name = hw_map.get("board_name", "Custom")
-    soc        = hw_map.get("soc", "Unknown SoC")
-    arch       = hw_map.get("arch", "arm64")
-    cpu_core   = hw_map.get("cpu_core", "")
-    rails      = hw_map.get("power_rails", [])
+    board_name = _safe_str(hw_map.get("board_name"), "Custom")
+    soc        = _safe_str(hw_map.get("soc"), "Unknown SoC")
+    arch       = _safe_str(hw_map.get("arch"), "arm64")
+    cpu_core   = _safe_str(hw_map.get("cpu_core"), "")
+    rails      = hw_map.get("power_rails") or []
 
     # ── Build per-peripheral metadata ─────────────────────────────────────────
     all_meta: list[dict] = []
     for p in selected:
-        ptype = p.get("type", "other")
+        ptype = _safe_str(p.get("type"), "other")
         w     = _TYPE_WIDTH.get(ptype, 2)
-        nid   = _safe_id(p["id"])
-        bus   = p.get("bus", p["id"])
-        addr  = p.get("address", "")
-        volt  = p.get("voltage", "")
-        label = p["name"] + f"\\n{bus}" + (f" @ {addr}" if addr else "")
+        pid   = _safe_str(p.get("id"), f"node_{len(all_meta)}")
+        nid   = _safe_id(pid)
+        bus   = _safe_str(p.get("bus")) or pid
+        addr  = _safe_str(p.get("address"), "")
+        volt  = _safe_str(p.get("voltage"), "")
+        pname = _safe_str(p.get("name"), pid)
+        label = pname + f"\\n{bus}" + (f" @ {addr}" if addr else "")
         if volt:
             label += f"\\n{volt}"
         token = f'{nid}["{label}"]:{w}'
@@ -342,9 +349,10 @@ def _mermaid_diagram(hw_map: dict, selected: list[dict]) -> str:
     if rails:
         rail_tokens: list[tuple[str, int]] = []
         for r in rails:
-            rn    = _safe_id(r["name"])
-            v     = r.get("voltage", "?")
-            label = f"{r['name']}\\n{v}"
+            rname = _safe_str(r.get("name"), "vcc")
+            rn    = _safe_id(rname)
+            v     = _safe_str(r.get("voltage"), "?")
+            label = f"{rname}\\n{v}"
             rail_tokens.append((f'{rn}("{label}"):2', 2))
             rail_meta.append(rn)
         for row in _pack_blocks(rail_tokens, _COLS):
@@ -356,12 +364,13 @@ def _mermaid_diagram(hw_map: dict, selected: list[dict]) -> str:
     for m in all_meta:
         lines.append(f"  SoC --> {m['id']}")
 
-    selected_ids = {p["id"] for p in selected}
+    selected_ids = {_safe_str(p.get("id")) for p in selected if _safe_str(p.get("id"))}
     for r in rails:
-        rn = _safe_id(r["name"])
+        rn = _safe_id(_safe_str(r.get("name"), "vcc"))
         for sid in r.get("supplies", []):
-            if sid in selected_ids:
-                lines.append(f"  {rn} --> {_safe_id(sid)}")
+            sid_s = _safe_str(sid)
+            if sid_s in selected_ids:
+                lines.append(f"  {rn} --> {_safe_id(sid_s)}")
 
     # ── Styles ────────────────────────────────────────────────────────────────
     lines.append("")
@@ -379,7 +388,7 @@ def _mermaid_diagram(hw_map: dict, selected: list[dict]) -> str:
 # ── Public API ──────────────────────────────────────────────────────────────────
 
 def run(hw_map: dict, selected_ids: list[str]) -> dict:
-    selected = [p for p in hw_map.get("peripherals", []) if p["id"] in selected_ids]
+    selected = [p for p in hw_map.get("peripherals", []) if _safe_str(p.get("id")) in selected_ids]
 
     return {
         "gadget_yaml":    _gadget_yaml(hw_map, selected),

@@ -198,6 +198,11 @@
     padding: 16px;
     border-bottom: 1px solid var(--border);
   }
+  .panel-section.upload-section {
+    flex-shrink: 0;
+    max-height: 48vh;
+    overflow-y: auto;
+  }
   .panel-section h2 {
     font-size: 11px;
     font-weight: 500;
@@ -267,6 +272,7 @@
   /* Component list */
   .components-list {
     flex: 1;
+    min-height: 240px;
     overflow-y: auto;
     padding: 8px;
   }
@@ -694,7 +700,7 @@
   #validation-section { 
     margin-top: 16px; 
     display: none;
-    max-height: 40vh;
+    max-height: 26vh;
     overflow-y: auto;
     padding-right: 8px;
   }
@@ -932,7 +938,7 @@
   <div class="left-panel">
 
     <!-- Upload -->
-    <div class="panel-section">
+    <div class="panel-section upload-section">
       <h2>📄 Datasheet</h2>
       <div class="upload-zone" id="upload-zone">
         <div class="icon">📂</div>
@@ -952,6 +958,7 @@
         <span class="name" id="file-name"></span>
         <span class="clear" id="file-clear" title="Remove">✕</span>
       </div>
+      <button class="btn" id="stop-upload-btn" style="width: 100%; margin-top: 8px; display:none; background:#7f1d1d; border-color:#ef4444;">⏹️ Stop extraction and continue</button>
       <div class="soc-info" id="soc-info" style="display:none;">
         <div class="tag"><span>Board</span><strong id="board-name">—</strong></div>
         <div class="tag"><span>SoC</span><strong id="soc-name">—</strong></div>
@@ -1111,6 +1118,8 @@
   let sessionId   = null;
   let hwMap       = null;
   let resultFiles = null;
+  let currentUploadId = null;
+  let stopUploadPending = false;
 
   /* ── Model selector ───────────────────────────────────────────── */
   const modelSel    = document.getElementById('model-select');
@@ -1261,6 +1270,8 @@
   const zone     = document.getElementById('upload-zone');
   const inp      = document.getElementById('file-input');
   const fileList = document.getElementById('file-list');
+  const uploadBtn = document.getElementById('upload-btn');
+  const stopUploadBtn = document.getElementById('stop-upload-btn');
   let selectedFiles = [];
 
   zone.addEventListener('click',      () => inp.click());
@@ -1352,6 +1363,8 @@
   function resetUpload() {
     sessionId = null;
     hwMap = null;
+    currentUploadId = null;
+    stopUploadPending = false;
     window._validationData = null;
     selectedFiles = [];
     renderFileList();
@@ -1360,13 +1373,45 @@
       <div class="empty-state"><div class="big">🔌</div><p>Upload a datasheet to<br/>detect components</p></div>`;
     document.getElementById('validation-section').style.display = 'none';
     document.getElementById('run-btn').disabled = true;
+    stopUploadBtn.style.display = 'none';
+    stopUploadBtn.disabled = false;
     inp.value = '';
   }
 
-  document.getElementById('upload-btn').addEventListener('click', uploadFiles);
+  uploadBtn.addEventListener('click', uploadFiles);
+  stopUploadBtn.addEventListener('click', requestStopUpload);
+
+  async function requestStopUpload() {
+    if (!currentUploadId) {
+      stopUploadPending = true;
+      logMsg('⏳ Stop queued — waiting for upload session id...');
+      return;
+    }
+    stopUploadBtn.disabled = true;
+    try {
+      const res = await fetch('/api/upload/stop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ upload_id: currentUploadId }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail || 'Stop request failed');
+      }
+      logMsg('⏹️ Stop requested. Finishing current section, then merging discovered components...');
+    } catch (err) {
+      logMsg(`❌ Stop request failed: ${err.message}`, 'error');
+      stopUploadBtn.disabled = false;
+    }
+  }
 
   async function uploadFiles() {
     if (selectedFiles.length === 0) return;
+    currentUploadId = null;
+    stopUploadPending = false;
+    uploadBtn.disabled = true;
+    stopUploadBtn.style.display = 'block';
+    stopUploadBtn.disabled = false;
 
     zone.style.display = 'none';
     fileList.style.display = 'none';
@@ -1418,8 +1463,14 @@
             logMsg(evt.message);
           } else if (evt.type === 'error') {
             logMsg(`❌ ${evt.message}`, 'error');
+          } else if (evt.type === 'upload_started') {
+            currentUploadId = evt.upload_id || null;
+            if (stopUploadPending && currentUploadId) {
+              requestStopUpload();
+            }
           } else if (evt.type === 'upload_done') {
             document.getElementById('upload-progress').style.display = 'none';
+            stopUploadBtn.style.display = 'none';
             const data = evt;
             sessionId = data.session_id;
             hwMap = {
@@ -1456,6 +1507,12 @@
     } catch (err) {
       document.getElementById('upload-progress').style.display = 'none';
       logMsg(`❌ ${err.message}`, 'error');
+    } finally {
+      uploadBtn.disabled = false;
+      stopUploadBtn.style.display = 'none';
+      stopUploadBtn.disabled = false;
+      currentUploadId = null;
+      stopUploadPending = false;
     }
   }
 
@@ -1783,7 +1840,27 @@
     renderMermaid(r.mermaid);
 
     // RACI matrix
-    if (r.raci_html) renderRaci(r.raci_html, r.files.raci, r.recommended_uc);
+    if (r.raci_html && String(r.raci_html).trim()) {
+      renderRaci(r.raci_html, r.files.raci, r.recommended_uc);
+    } else if (sessionId) {
+      fetch('/api/raci', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId }),
+      })
+      .then(res => res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`)))
+      .then(data => {
+        if (data && data.raci_html && String(data.raci_html).trim()) {
+          renderRaci(data.raci_html, r.files?.raci || '', data.recommended_uc || '');
+          logMsg('✅ RACI matrix loaded from session cache', 'log');
+        } else {
+          logMsg('⚠️ RACI data available but empty', 'error');
+        }
+      })
+      .catch(err => {
+        logMsg(`⚠️ Failed to load RACI matrix: ${err.message}`, 'error');
+      });
+    }
 
     // Downloads
     renderDownloads(r.files);
