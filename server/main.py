@@ -877,7 +877,7 @@ async def _pipeline_stream(session_id: str, selected_ids: list[str], alternative
     yield event("✅ hardware_map.json saved", "log")
     await asyncio.sleep(0.2)
 
-    # ── @kernel_scout + @raci_builder ─────────────────────────────────────────
+    # ── @kernel_scout + @raid_builder ─────────────────────────────────────────
     yield event("🔬 @kernel_scout — looking up upstream Linux kernel drivers…", "log")
     await asyncio.sleep(0.3)
     try:
@@ -887,24 +887,24 @@ async def _pipeline_stream(session_id: str, selected_ids: list[str], alternative
         except Exception as e_online:
             yield event(f"⚠️  GitHub-enriched lookup failed ({e_online}) — retrying offline", "log")
             drivers = kernel_scout.lookup_drivers(filtered_map, online=False)
-        raci_data  = raci_builder.build(filtered_map, drivers)
-        raci_path  = OUTPUT_DIR / f"{session_id}_raci.csv"
-        raci_path.write_text(raci_data["raci_csv"])
+        raid_data  = raci_builder.build(filtered_map, drivers)
+        raid_path  = OUTPUT_DIR / f"{session_id}_raid.csv"
+        raid_path.write_text(raid_data["raid_csv"])
         mainline_n = sum(1 for d in drivers if d.get("status") == "mainline")
-        rec        = raci_data.get("recommended_uc", "")
+        rec        = raid_data.get("recommended_uc", "")
         yield event(
-            f"✅ RACI matrix built — {len(drivers)} drivers "
+            f"✅ RAID matrix built — {len(drivers)} drivers "
             f"({mainline_n} mainline, {len(drivers)-mainline_n} need work)"
             + (f" | recommended: {rec}" if rec else ""),
             "log"
         )
         if github_lookup:
             yield event("🔗 GitHub repo lookup enabled for driver enrichment", "log")
-        # store in session for /api/raci
-        _sessions[session_id]["raci"] = raci_data
+        # store in session for /api/raid
+        _sessions[session_id]["raid"] = raid_data
     except Exception as e:
         yield event(f"⚠️  @kernel_scout skipped: {e}", "log")
-        raci_data = {"raci_html": "", "raci_csv": "", "raci_json": []}
+        raid_data = {"raid_html": "", "raid_csv": "", "raid_json": []}
 
     await asyncio.sleep(0.2)
 
@@ -918,16 +918,16 @@ async def _pipeline_stream(session_id: str, selected_ids: list[str], alternative
         "snapcraft_yaml":  snap_files["snapcraft_yaml"],
         "mermaid":         snap_files["mermaid"],
         "hardware_map":    filtered_map,
-        "raci_html":       raci_data.get("raci_html", ""),
-        "raci_json":       raci_data.get("raci_json", []),
-        "recommended_uc":  raci_data.get("recommended_uc", ""),
+        "raid_html":       raid_data.get("raid_html", ""),
+        "raid_json":       raid_data.get("raid_json", []),
+        "recommended_uc":  raid_data.get("recommended_uc", ""),
         "validation_report": validation_result,
         "files": {
             "dts":       f"/api/download/{session_id}_board.dts",
             "gadget":    f"/api/download/{session_id}_gadget.yaml",
             "snapcraft": f"/api/download/{session_id}_snapcraft.yaml",
             "map":       f"/api/download/{session_id}_hardware_map.json",
-            "raci":      f"/api/download/{session_id}_raci.csv",
+            "raid":      f"/api/download/{session_id}_raid.csv",
         },
     }
     yield f"data: {json.dumps(payload)}\n\n"
@@ -945,29 +945,29 @@ async def generate_pipeline(req: GenerateRequest):
     )
 
 
-# ── RACI ───────────────────────────────────────────────────────────────────────
+# ── RAID ───────────────────────────────────────────────────────────────────────
 
-class RaciRequest(BaseModel):
+class RaidRequest(BaseModel):
     session_id: str
 
-@app.post("/api/raci")
-async def get_raci(req: RaciRequest):
-    """Re-generate (or return cached) RACI matrix for a session."""
+@app.post("/api/raid")
+async def get_raid(req: RaidRequest):
+    """Re-generate (or return cached) RAID matrix for a session."""
     session = _sessions.get(req.session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
     # Return cached if available
-    if "raci" in session:
-        return session["raci"]
+    if "raid" in session:
+        return session["raid"]
 
     # Generate on demand
     hw_map = session["hw_map"]
     try:
         drivers   = kernel_scout.lookup_drivers(hw_map, online=False)
-        raci_data = raci_builder.build(hw_map, drivers)
-        session["raci"] = raci_data
-        return raci_data
+        raid_data = raci_builder.build(hw_map, drivers)
+        session["raid"] = raid_data
+        return raid_data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

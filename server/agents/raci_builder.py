@@ -1,12 +1,18 @@
 """
-@raci_builder  — RACI matrix generator for the PDF-to-Gadget pipeline.
+@raci_builder  — RAID matrix generator for the PDF-to-Gadget pipeline.
 
 Takes hw_map + driver_info list (from kernel_scout.lookup_drivers) and
 produces:
-  - raci_html  : color-coded HTML table with Ubuntu Core version analysis
-  - raci_csv   : CSV string
-  - raci_json  : list of row dicts
+  - raid_html  : color-coded HTML table with Ubuntu Core version analysis
+  - raid_csv   : CSV string
+  - raid_json  : list of row dicts with driver notes
   - recommended_uc : "UC22" | "UC24" | "UC26" (lowest risk)
+
+RAID framework:
+  R — Responsible: Driver maintainer (vendor/kernel maintainer)
+  A — Accountable: Ubuntu Core integration team
+  I — Informed: Hardware manufacturer / BSP engineer
+  D — Drivers: Source repository (kernel.org, vendor GitHub, etc.)
 """
 from __future__ import annotations
 import csv
@@ -15,10 +21,11 @@ import html as html_lib
 import re
 from typing import List, Dict, Tuple
 
-# ── RACI roles ─────────────────────────────────────────────────────────────────
-_R = "BSP Engineer"
-_A = "HW Architect"
-_I = "PM / Integration"
+# ── RAID roles ─────────────────────────────────────────────────────────────────
+_R = "Driver Maintainer"
+_A = "UC Integration"
+_I = "HW Vendor / BSP"
+_D = "Kernel / Vendor Repo"
 
 # ── Ubuntu Core → base kernel version ─────────────────────────────────────────
 _UC_KERNELS: dict[str, Tuple[int, int]] = {
@@ -93,50 +100,99 @@ def build(hw_map: dict, drivers: List[Dict]) -> dict:
     recommended = _recommend_uc(rows)
 
     return {
-        "raci_html":       _to_html(rows, board, soc, recommended),
-        "raci_csv":        _to_csv(rows),
-        "raci_json":       rows,
+        "raid_html":       _to_html(rows, board, soc, recommended),
+        "raid_csv":        _to_csv(rows),
+        "raid_json":       rows,
         "recommended_uc":  recommended,
     }
 
 
 # ── Internal ───────────────────────────────────────────────────────────────────
 
+def _driver_notes(driver_dict: Dict) -> str:
+    """Generate driver notes based on status, maintainer, and effort."""
+    status = driver_dict.get("status", "unknown")
+    maintainer = driver_dict.get("maintainer", "unknown")
+    effort = driver_dict.get("effort", "investigate")
+    notes = driver_dict.get("notes", "")
+    
+    parts = []
+    
+    # Add status-based note
+    if status == "mainline":
+        parts.append("✅ Mainline kernel driver (in-tree)")
+    elif status == "backport":
+        parts.append("🔧 Backport required to older kernels")
+    elif status == "vendor":
+        parts.append("📦 Out-of-tree vendor driver")
+    elif status == "wip":
+        parts.append("🚧 Work-in-progress driver")
+    else:
+        parts.append("❓ Driver status unknown")
+    
+    # Add maintainer note
+    if maintainer not in ("unknown", "N/A", ""):
+        parts.append(f"Maintained by {maintainer}")
+    
+    # Add effort note
+    if effort == "low":
+        parts.append("Ready to use (low effort)")
+    elif effort == "medium":
+        parts.append("Requires some configuration (medium effort)")
+    elif effort == "high":
+        parts.append("Complex integration required (high effort)")
+    elif effort == "investigate":
+        parts.append("Requires investigation")
+    
+    # Append user-provided notes
+    if notes and notes not in ("Generic component", "No driver found"):
+        parts.append(notes)
+    
+    return " • ".join(parts)
+
+
 def _build_rows(drivers: List[Dict]) -> List[Dict]:
-    rows = []
-    for d in drivers:
-        drv_status = d.get("status", "unknown")
-        since      = d.get("kernel_since", "unknown")
+     rows = []
+     for d in drivers:
+         drv_status = d.get("status", "unknown")
+         since      = d.get("kernel_since", "unknown")
+         maintainer = d.get("maintainer", "")
+         github_repo = d.get("github_repo_name", "")
 
-        # per-UC availability
-        uc_status = {
-            uc: _uc_driver_status(drv_status, since, kver)
-            for uc, kver in _UC_KERNELS.items()
-        }
+         # per-UC availability
+         uc_status = {
+             uc: _uc_driver_status(drv_status, since, kver)
+             for uc, kver in _UC_KERNELS.items()
+         }
 
-        rows.append({
-            "peripheral":    d.get("peripheral_name", d.get("peripheral_id", "")),
-            "type":          d.get("peripheral_type", ""),
-            "driver_module": d.get("driver_module", "unknown"),
-            "kernel_since":  since,
-            "kconfig":       d.get("kconfig", ""),
-            "source_path":   d.get("source_path", ""),
-            "status":        drv_status,
-            "effort":        d.get("effort", "investigate"),
-            "github_url":    d.get("github_url", ""),
-            "github_repo_name": d.get("github_repo_name", ""),
-            "github_repo_url": d.get("github_repo_url", ""),
-            # UC availability
-            "UC22": uc_status["UC22"],
-            "UC24": uc_status["UC24"],
-            "UC26": uc_status["UC26"],
-            # RACI — team roles only
-            "R": _R,
-            "A": _A,
-            "C": "Upstream Team",
-            "I": _I,
-        })
-    return rows
+         # Generate driver notes
+         driver_notes_text = _driver_notes(d)
+
+         rows.append({
+             "peripheral":    d.get("peripheral_name", d.get("peripheral_id", "")),
+             "type":          d.get("peripheral_type", ""),
+             "driver_module": d.get("driver_module", "unknown"),
+             "kernel_since":  since,
+             "kconfig":       d.get("kconfig", ""),
+             "source_path":   d.get("source_path", ""),
+             "status":        drv_status,
+             "effort":        d.get("effort", "investigate"),
+             "github_url":    d.get("github_url", ""),
+             "github_repo_name": github_repo,
+             "github_repo_url": d.get("github_repo_url", ""),
+             "maintainer":    maintainer,
+             "driver_notes":  driver_notes_text,
+             # UC availability
+             "UC22": uc_status["UC22"],
+             "UC24": uc_status["UC24"],
+             "UC26": uc_status["UC26"],
+             # RAID — team roles & drivers
+             "R": _R,
+             "A": _A,
+             "I": _I,
+             "D": _D,
+         })
+     return rows
 
 
 def _recommend_uc(rows: List[Dict]) -> str:
@@ -211,10 +267,11 @@ def _to_html(rows: List[Dict], board: str, soc: str, recommended: str) -> str:
         <th>Status</th>
         <th>Effort</th>
         {uc_headers}
-        <th title="Responsible">R</th>
-        <th title="Accountable">A</th>
-        <th title="Consulted: upstream maintainer">C</th>
-        <th title="Informed">I</th>
+        <th title="Responsible: Driver maintainer">R</th>
+        <th title="Accountable: UC integration">A</th>
+        <th title="Informed: Hardware vendor">I</th>
+        <th title="Drivers: Source repository">D</th>
+        <th>Notes</th>
       </tr>
     </thead>"""
 
@@ -242,8 +299,8 @@ def _to_html(rows: List[Dict], board: str, soc: str, recommended: str) -> str:
         src = r.get("source_path", "")
         src_tip = html_lib.escape(src) if src not in ("N/A", "unknown", "") else ""
 
-        c_full  = html_lib.escape(r["C"])
-        c_short = c_full if len(c_full) <= 38 else c_full[:35] + "…"
+        driver_notes = html_lib.escape(r.get("driver_notes", ""))
+        maintainer = html_lib.escape(r.get("maintainer", ""))
 
         # UC cells
         uc_cells = ""
@@ -261,17 +318,18 @@ def _to_html(rows: List[Dict], board: str, soc: str, recommended: str) -> str:
         <td>{repo_cell}</td>
         <td>{html_lib.escape(r['kernel_since'])}</td>
         <td><code title="{src_tip}">{html_lib.escape(r['kconfig'])}</code></td>
-        <td><span class="raci-badge" style="background:{bg};color:{fg};">{html_lib.escape(status)}</span></td>
+        <td><span class="raid-badge" style="background:{bg};color:{fg};">{html_lib.escape(status)}</span></td>
         <td>{efflabel}</td>
         {uc_cells}
-        <td class="raci-r" title="{html_lib.escape(_R)}">R</td>
-        <td class="raci-a" title="{html_lib.escape(_A)}">A</td>
-        <td class="raci-c" title="Upstream Team">C</td>
-        <td class="raci-i" title="{html_lib.escape(_I)}">I</td>
+        <td class="raid-r" title="{html_lib.escape(_R)}">{maintainer or '—'}</td>
+        <td class="raid-a" title="{html_lib.escape(_A)}">UC</td>
+        <td class="raid-i" title="{html_lib.escape(_I)}">Vendor</td>
+        <td class="raid-d" title="{html_lib.escape(_D)}">{repo_name or '—'}</td>
+        <td style="font-size:11px;max-width:300px;word-wrap:break-word;">{driver_notes}</td>
       </tr>""")
 
     legend = f"""
-    <div class="raci-legend">
+    <div class="raid-legend">
       <strong>{html_lib.escape(board)}</strong> · {html_lib.escape(soc)}
       &nbsp;|&nbsp;
       <span style="color:#66ff66">🟢 mainline</span> &nbsp;
@@ -279,18 +337,18 @@ def _to_html(rows: List[Dict], board: str, soc: str, recommended: str) -> str:
       <span style="color:#ff8800">🟠 vendor</span> &nbsp;
       <span style="color:#ff4444">🔴 unknown</span>
       &nbsp;|&nbsp;
-      <strong>R</strong>=Responsible &nbsp;
-      <strong>A</strong>=Accountable &nbsp;
-      <strong>C</strong>=Consulted &nbsp;
-      <strong>I</strong>=Informed
+      <strong>R</strong>=Responsible (driver maintainer) &nbsp;
+      <strong>A</strong>=Accountable (UC integration) &nbsp;
+      <strong>I</strong>=Informed (hardware vendor) &nbsp;
+      <strong>D</strong>=Drivers (source repo)
     </div>"""
 
     return f"""
-<div class="raci-wrap">
+<div class="raid-wrap">
   {banner_html}
   {legend}
-  <div class="raci-table-scroll">
-    <table class="raci-table">
+  <div class="raid-table-scroll">
+    <table class="raid-table">
       {thead}
       <tbody>{''.join(tbody_rows)}
       </tbody>
@@ -305,8 +363,8 @@ def _to_csv(rows: List[Dict]) -> str:
     buf    = io.StringIO()
     fields = ["peripheral", "type", "driver_module", "kernel_since",
               "kconfig", "source_path", "status", "effort",
-              "github_repo_name", "github_repo_url",
-              "UC22", "UC24", "UC26", "R", "A", "C", "I"]
+              "github_repo_name", "github_repo_url", "maintainer", "driver_notes",
+              "UC22", "UC24", "UC26", "R", "A", "I", "D"]
     w = csv.DictWriter(buf, fieldnames=fields, extrasaction="ignore")
     w.writeheader()
     w.writerows(rows)
