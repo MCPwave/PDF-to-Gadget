@@ -337,20 +337,19 @@ def _to_html(rows: List[Dict], board: str, soc: str, recommended: str) -> str:
         <td style="font-size:11px;max-width:300px;word-wrap:break-word;">{driver_notes}</td>
       </tr>""")
 
-     legend = f"""
-    <div class="raid-legend">
-      <strong>{html_lib.escape(board)}</strong> · {html_lib.escape(soc)}
-      &nbsp;|&nbsp;
-      <span style="color:#66ff66">🟢 mainline</span> &nbsp;
-      <span style="color:#ffcc00">🟡 backport/wip</span> &nbsp;
-      <span style="color:#ff8800">🟠 vendor</span> &nbsp;
-      <span style="color:#ff4444">🔴 unknown</span>
-      &nbsp;|&nbsp;
-      <strong>R</strong>=Risk (integration + driver status) &nbsp;
-      <strong>A</strong>=Assumptions (technical constraints) &nbsp;
-      <strong>I</strong>=Issues (blockers & limitations) &nbsp;
-      <strong>D</strong>=Decisions (recommendations & actions)
-    </div>"""
+    legend = f"""
+     <strong>{html_lib.escape(board)}</strong> · {html_lib.escape(soc)}
+     &nbsp;|&nbsp;
+     <span style="color:#66ff66">🟢 mainline</span> &nbsp;
+     <span style="color:#ffcc00">🟡 backport/wip</span> &nbsp;
+     <span style="color:#ff8800">🟠 vendor</span> &nbsp;
+     <span style="color:#ff4444">🔴 unknown</span>
+     &nbsp;|&nbsp;
+     <strong>R</strong>=Risk (integration + driver status) &nbsp;
+     <strong>A</strong>=Assumptions (technical constraints) &nbsp;
+     <strong>I</strong>=Issues (blockers & limitations) &nbsp;
+     <strong>D</strong>=Decisions (recommendations & actions)
+   </div>"""
 
     return f"""
 <div class="raid-wrap">

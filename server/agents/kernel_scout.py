@@ -750,6 +750,24 @@ def _search_vendor_public_repos(
     if "allwinner" in soc_lower or "h3" in soc_lower or "h5" in soc_lower:
         vendor_orgs.extend(["Allwinner"])
     
+    # Add GPU/accelerator vendor orgs based on component name/module
+    peripheral_lower = (peripheral_name or "").lower()
+    driver_lower = (driver_module or "").lower()
+    search_text = f"{peripheral_lower} {driver_lower}"
+    
+    if "nvidia" in search_text or "geforce" in search_text or "rtx" in search_text or "tesla" in search_text or "jetson" in search_text:
+        vendor_orgs.extend(["NVIDIA", "nvidia"])
+    if "amd" in search_text or "radeon" in search_text or "ryzen" in search_text or "epyc" in search_text:
+        vendor_orgs.extend(["AMD-OSS", "amd", "amd-asr"])
+    if "intel" in search_text or "arc" in search_text or "iris" in search_text or "xe" in search_text or "ipu" in search_text:
+        vendor_orgs.extend(["intel", "intel-iot-devkit"])
+    if "qualcomm" in search_text or "snapdragon" in search_text:
+        vendor_orgs.extend(["Qualcomm"])
+    if "arm" in search_text and "mali" in search_text:
+        vendor_orgs.extend(["ARM-software"])
+    if "vivante" in search_text or "gc" in search_text:  # Vivante GPU
+        vendor_orgs.extend(["vivante-opensource"])
+    
     # Search in vendor organizations first
     for org in vendor_orgs:
         for term in search_terms[:2]:  # Limit to top 2 search terms per org
@@ -1115,7 +1133,7 @@ def _is_generic_component(peripheral_name: str, peripheral_type: str) -> bool:
 
 def detect_vendor_components(peripheral_name: str, peripheral_type: str) -> Optional[dict]:
     """
-    Detect vendor-specific components (IPU6, Arc GPU, etc.) from peripheral name/type.
+    Detect vendor-specific components (IPU6, Arc GPU, NVIDIA RTX, etc.) from peripheral name/type.
     Returns driver info dict if found, else None.
     """
     name_lower = (peripheral_name or "").lower()
@@ -1123,7 +1141,63 @@ def detect_vendor_components(peripheral_name: str, peripheral_type: str) -> Opti
     search_text = f"{name_lower} {type_lower}"
     
     # GPU-specific lookup (preferred for gpu type)
-    if "gpu" in type_lower:
+    # Use pattern matching instead of exact string search for flexibility
+    if "gpu" in type_lower or "graphics" in type_lower or "accelerator" in type_lower:
+        # Check for NVIDIA first
+        if any(x in search_text for x in ["nvidia", "geforce", "rtx", "tesla", "jetson", "cudnn", "cuda"]):
+            return {
+                "module": "nvidia",
+                "kconfig": "NVIDIA_DRIVER",
+                "since": "N/A",
+                "path": "github.com/NVIDIA/open-gpu-kernel-modules",
+                "status": "vendor",
+                "maintainer": "NVIDIA",
+                "github_repo": "NVIDIA/open-gpu-kernel-modules",
+            }
+        # Check for AMD
+        if any(x in search_text for x in ["amd", "radeon", "rocm", "mi300", "mi250"]):
+            return {
+                "module": "amd",
+                "kconfig": "AMD_GPU",
+                "since": "N/A",
+                "path": "github.com/GPUOpen-Drivers",
+                "status": "vendor",
+                "maintainer": "AMD",
+                "github_repo": "GPUOpen-Drivers/AMDVLK",
+            }
+        # Check for Intel Arc/Iris
+        if any(x in search_text for x in ["intel arc", "iris", "arc gpu", "xe", "dg1"]):
+            return {
+                "module": "i915-xe",
+                "kconfig": "DRM_XE",
+                "since": "v6.2",
+                "path": "drivers/gpu/drm/xe/",
+                "status": "mainline",
+                "maintainer": "Intel (DRM/GPU)",
+                "github_repo": "torvalds/linux",
+            }
+        # Check for Qualcomm Adreno
+        if any(x in search_text for x in ["adreno", "qualcomm", "snapdragon"]):
+            return {
+                "module": "msm",
+                "kconfig": "DRM_MSM",
+                "since": "v3.5",
+                "path": "drivers/gpu/drm/msm/",
+                "status": "mainline",
+                "maintainer": "Qualcomm",
+            }
+        # Check for ARM Mali
+        if any(x in search_text for x in ["mali", "arm gpu"]):
+            return {
+                "module": "mali-drm",
+                "kconfig": "DRM_PANFROST",
+                "since": "v5.5",
+                "path": "drivers/gpu/drm/panfrost/",
+                "status": "mainline",
+                "maintainer": "ARM",
+            }
+        
+        # Fall back to exact model matching from _GPU_DRIVERS
         for gpu_model, gpu_info in _GPU_DRIVERS.items():
             if gpu_model.lower() in name_lower:
                 return dict(gpu_info)
@@ -1138,6 +1212,7 @@ def detect_vendor_components(peripheral_name: str, peripheral_type: str) -> Opti
                 "path": comp_info["path"],
                 "status": comp_info["status"],
                 "maintainer": comp_info["maintainer"],
+                "github_repo": comp_info.get("github_repo", ""),
             }
     return None
 
