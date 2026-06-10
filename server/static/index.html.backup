@@ -198,6 +198,11 @@
     padding: 16px;
     border-bottom: 1px solid var(--border);
   }
+  .panel-section.upload-section {
+    flex-shrink: 0;
+    max-height: 48vh;
+    overflow-y: auto;
+  }
   .panel-section h2 {
     font-size: 11px;
     font-weight: 500;
@@ -263,47 +268,11 @@
   .soc-info .tag span { color: var(--canonical-orange); margin-right: 4px; font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
 
   /* Board and Components sections */
-  .board-section {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 12px;
-    margin-bottom: 12px;
-  }
-  .board-section h3 {
-    font-size: 13px;
-    font-weight: 600;
-    margin-bottom: 8px;
-    color: var(--canonical-orange);
-    text-transform: uppercase;
-    letter-spacing: .05em;
-  }
-  .board-details {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-    font-size: 12px;
-  }
-  .board-detail {
-    padding: 6px;
-    background: rgba(233, 84, 32, .05);
-    border-radius: 2px;
-  }
-  .board-detail .label {
-    color: var(--muted);
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: .04em;
-    margin-bottom: 2px;
-  }
-  .board-detail .value {
-    color: var(--text);
-    font-weight: 500;
-  }
 
   /* Component list */
   .components-list {
     flex: 1;
+    min-height: 240px;
     overflow-y: auto;
     padding: 8px;
   }
@@ -728,7 +697,22 @@
   .file-item .remove:hover { color: var(--canonical-orange); }
   
   /* validation results */
-  #validation-section { margin-top: 16px; display: none; }
+  #validation-section { 
+    margin-top: 16px; 
+    display: none;
+    max-height: 26vh;
+    overflow-y: auto;
+    padding-right: 8px;
+  }
+  #validation-section::-webkit-scrollbar { width: 8px; }
+  #validation-section::-webkit-scrollbar-track { background: transparent; }
+  #validation-section::-webkit-scrollbar-thumb { 
+    background: var(--border);
+    border-radius: 4px;
+  }
+  #validation-section::-webkit-scrollbar-thumb:hover { 
+    background: var(--muted);
+  }
   .validation-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
   .validation-header h3 { font-size: 14px; font-weight: 500; margin: 0; }
   .validation-summary {
@@ -807,19 +791,6 @@
     margin-bottom: 4px;
   }
   .comp-validation-drivers .driver:last-child { margin-bottom: 0; }
-  .comp-validation-drivers .driver .status {
-    display: inline-block;
-    padding: 1px 4px;
-    border-radius: 2px;
-    font-size: 9px;
-    font-weight: 600;
-    text-transform: uppercase;
-    margin-left: 4px;
-  }
-  .comp-validation-drivers .driver .status.mainline { background: var(--green); color: #fff; }
-  .comp-validation-drivers .driver .status.backport { background: var(--yellow); color: #000; }
-  .comp-validation-drivers .driver .status.vendor { background: var(--canonical-orange); color: #fff; }
-  .comp-validation-drivers .driver .status.unknown { background: var(--muted); color: #000; }
 
   .comp-validation-alternatives {
     margin-top: 8px;
@@ -856,18 +827,6 @@
     font-weight: 600;
     flex: 1;
   }
-  .alt-radio-option .alt-driver-status {
-    display: inline-block;
-    padding: 1px 4px;
-    border-radius: 2px;
-    font-size: 9px;
-    font-weight: 600;
-    text-transform: uppercase;
-  }
-  .alt-radio-option .alt-driver-status.mainline { background: var(--green); color: #fff; }
-  .alt-radio-option .alt-driver-status.backport { background: var(--yellow); color: #000; }
-  .alt-radio-option .alt-driver-status.vendor { background: var(--canonical-orange); color: #fff; }
-  .alt-radio-option .alt-driver-status.unknown { background: var(--muted); color: #000; }
 
   .conflicts-table {
     width: 100%;
@@ -979,7 +938,7 @@
   <div class="left-panel">
 
     <!-- Upload -->
-    <div class="panel-section">
+    <div class="panel-section upload-section">
       <h2>📄 Datasheet</h2>
       <div class="upload-zone" id="upload-zone">
         <div class="icon">📂</div>
@@ -999,6 +958,7 @@
         <span class="name" id="file-name"></span>
         <span class="clear" id="file-clear" title="Remove">✕</span>
       </div>
+      <button class="btn" id="stop-upload-btn" style="width: 100%; margin-top: 8px; display:none; background:#7f1d1d; border-color:#ef4444;">⏹️ Stop extraction and continue</button>
       <div class="soc-info" id="soc-info" style="display:none;">
         <div class="tag"><span>Board</span><strong id="board-name">—</strong></div>
         <div class="tag"><span>SoC</span><strong id="soc-name">—</strong></div>
@@ -1007,14 +967,20 @@
         <div class="tag"><span>Mode</span><strong id="parse-mode">—</strong></div>
       </div>
       
-      <!-- Board Details Section (new) -->
-      <div class="board-section" id="board-section" style="display:none;">
-        <h3>🖥 Board</h3>
-        <div class="board-details" id="board-details"></div>
-      </div>
-      
       <div id="upload-progress" style="display:none; margin-top:10px; color:var(--muted); font-size:12px;">
         ⏳ Processing files…
+      </div>
+      
+      <!-- Extraction options -->
+      <div style="margin-top: 16px; padding: 12px; background: var(--surface); border-radius: var(--radius); border-left: 3px solid var(--canonical-orange);">
+        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: var(--text);">
+          <input type="checkbox" id="llm-only-mode" style="cursor: pointer; width: 16px; height: 16px;"/>
+          <span>🧠 LLM-only extraction (no heuristic fallback)</span>
+        </label>
+        <div style="font-size: 11px; color: var(--muted); margin-top: 6px; line-height: 1.4;">
+          ℹ️ Unchecked: Fast extraction with heuristic fallback (0.65 confidence)<br/>
+          Checked: Higher accuracy but slower, may skip sections (0.95 confidence)
+        </div>
       </div>
       
       <!-- Validation results section -->
@@ -1152,6 +1118,8 @@
   let sessionId   = null;
   let hwMap       = null;
   let resultFiles = null;
+  let currentUploadId = null;
+  let stopUploadPending = false;
 
   /* ── Model selector ───────────────────────────────────────────── */
   const modelSel    = document.getElementById('model-select');
@@ -1176,7 +1144,12 @@
   async function loadModels() {
     try {
       const res  = await fetch('/api/models');
+      if (!res.ok) {
+        console.error(`Failed to load models: HTTP ${res.status}`);
+        throw new Error(`HTTP ${res.status}`);
+      }
       const data = await res.json();
+      console.log('Models loaded:', data);
       cloudMeta  = data.cloud || {};
 
       modelSel.innerHTML = '<option value="">⚡ auto-detect (local first)</option>';
@@ -1229,6 +1202,7 @@
 
       updateKeyPrompt();
     } catch (e) {
+      console.error('Error loading models:', e);
       modelStatus.textContent = 'error';
       modelStatus.className   = 'model-status off';
     }
@@ -1296,6 +1270,8 @@
   const zone     = document.getElementById('upload-zone');
   const inp      = document.getElementById('file-input');
   const fileList = document.getElementById('file-list');
+  const uploadBtn = document.getElementById('upload-btn');
+  const stopUploadBtn = document.getElementById('stop-upload-btn');
   let selectedFiles = [];
 
   zone.addEventListener('click',      () => inp.click());
@@ -1315,7 +1291,31 @@
   });
 
   function addFilesToSelection(filesToAdd) {
-    selectedFiles.push(...filesToAdd);
+    const MAX_SIZE = 20 * 1024 * 1024; // 20MB
+    let totalSize = selectedFiles.reduce((sum, f) => sum + f.size, 0);
+    let rejected = [];
+    
+    for (const file of filesToAdd) {
+      totalSize += file.size;
+      
+      if (file.size > MAX_SIZE) {
+        rejected.push(`${file.name} (${(file.size / 1024 / 1024).toFixed(1)}MB exceeds 20MB limit)`);
+        continue;
+      }
+      
+      if (totalSize > MAX_SIZE) {
+        rejected.push(`${file.name} (total would exceed 20MB limit)`);
+        totalSize -= file.size;
+        continue;
+      }
+      
+      selectedFiles.push(file);
+    }
+    
+    if (rejected.length > 0) {
+      alert(`⚠️ File(s) rejected:\n\n${rejected.join('\n')}\n\nMax total: 20MB`);
+    }
+    
     renderFileList();
   }
 
@@ -1340,9 +1340,15 @@
         <span class="remove" onclick="removeFileAtIndex(${idx})">✕</span>
       </div>`).join('');
     
+    const totalSize = selectedFiles.reduce((sum, f) => sum + f.size, 0);
+    const totalMB = (totalSize / 1024 / 1024).toFixed(1);
+    const sizeWarning = totalSize > 20 * 1024 * 1024 
+      ? ' <span style="color:red">⚠️ Exceeds 20MB!</span>'
+      : totalMB > 16 ? ' <span style="color:orange">⚠️ Close to limit</span>' : '';
+    
     document.getElementById('file-items').innerHTML = items;
     document.getElementById('upload-btn').textContent = 
-      `📤 Upload ${selectedFiles.length} file${selectedFiles.length > 1 ? 's' : ''}`;
+      `📤 Upload ${selectedFiles.length} file${selectedFiles.length > 1 ? 's' : ''} (${totalMB}MB)${sizeWarning}`;
   }
 
   function removeFileAtIndex(idx) {
@@ -1357,22 +1363,55 @@
   function resetUpload() {
     sessionId = null;
     hwMap = null;
+    currentUploadId = null;
+    stopUploadPending = false;
     window._validationData = null;
     selectedFiles = [];
     renderFileList();
     document.getElementById('comp-count').textContent    = '';
     document.getElementById('components-list').innerHTML = `
       <div class="empty-state"><div class="big">🔌</div><p>Upload a datasheet to<br/>detect components</p></div>`;
-    document.getElementById('board-section').style.display = 'none';
     document.getElementById('validation-section').style.display = 'none';
     document.getElementById('run-btn').disabled = true;
+    stopUploadBtn.style.display = 'none';
+    stopUploadBtn.disabled = false;
     inp.value = '';
   }
 
-  document.getElementById('upload-btn').addEventListener('click', uploadFiles);
+  uploadBtn.addEventListener('click', uploadFiles);
+  stopUploadBtn.addEventListener('click', requestStopUpload);
+
+  async function requestStopUpload() {
+    if (!currentUploadId) {
+      stopUploadPending = true;
+      logMsg('⏳ Stop queued — waiting for upload session id...');
+      return;
+    }
+    stopUploadBtn.disabled = true;
+    try {
+      const res = await fetch('/api/upload/stop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ upload_id: currentUploadId }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail || 'Stop request failed');
+      }
+      logMsg('⏹️ Stop requested. Finishing current section, then merging discovered components...');
+    } catch (err) {
+      logMsg(`❌ Stop request failed: ${err.message}`, 'error');
+      stopUploadBtn.disabled = false;
+    }
+  }
 
   async function uploadFiles() {
     if (selectedFiles.length === 0) return;
+    currentUploadId = null;
+    stopUploadPending = false;
+    uploadBtn.disabled = true;
+    stopUploadBtn.style.display = 'block';
+    stopUploadBtn.disabled = false;
 
     zone.style.display = 'none';
     fileList.style.display = 'none';
@@ -1391,6 +1430,10 @@
     if (modelSel.value) fd.append('model', modelSel.value);
     const activeKey = getActiveApiKey();
     if (activeKey) fd.append('api_key', activeKey);
+    
+    // Add LLM-only mode flag
+    const llmOnlyMode = document.getElementById('llm-only-mode').checked;
+    fd.append('disable_heuristic_fallback', llmOnlyMode ? 'true' : 'false');
 
     try {
       const res = await fetch('/api/upload', { method: 'POST', body: fd });
@@ -1420,8 +1463,14 @@
             logMsg(evt.message);
           } else if (evt.type === 'error') {
             logMsg(`❌ ${evt.message}`, 'error');
+          } else if (evt.type === 'upload_started') {
+            currentUploadId = evt.upload_id || null;
+            if (stopUploadPending && currentUploadId) {
+              requestStopUpload();
+            }
           } else if (evt.type === 'upload_done') {
             document.getElementById('upload-progress').style.display = 'none';
+            stopUploadBtn.style.display = 'none';
             const data = evt;
             sessionId = data.session_id;
             hwMap = {
@@ -1446,7 +1495,6 @@
             modelStatus.className = `model-status ${data.mode !== 'heuristic' ? 'ok' : 'off'}`;
 
             renderComponents(data.peripherals);
-            renderBoardSection(data);
             logMsg(`✅ Upload complete — ${data.peripherals.length} components found, ` +
                    `${data.files_processed} file(s) processed`);
             
@@ -1459,6 +1507,12 @@
     } catch (err) {
       document.getElementById('upload-progress').style.display = 'none';
       logMsg(`❌ ${err.message}`, 'error');
+    } finally {
+      uploadBtn.disabled = false;
+      stopUploadBtn.style.display = 'none';
+      stopUploadBtn.disabled = false;
+      currentUploadId = null;
+      stopUploadPending = false;
     }
   }
 
@@ -1539,13 +1593,7 @@
             <div class="value">${conflict.message || '—'}</div>
           </div>`;
       
-      // Show driver status if available
-      if (conflict.driver_status) {
-        html += `<div class="item">
-          <div class="label">Driver</div>
-          <div class="value">${conflict.driver_name || '—'} <span class="status" style="display:inline-block;padding:1px 4px;border-radius:2px;font-size:9px;font-weight:600;text-transform:uppercase;margin-left:4px;background:${getDriverStatusColor(conflict.driver_status)};color:#fff;">${conflict.driver_status}</span></div>
-        </div>`;
-      }
+      // Driver status removed as per user request
       
       html += '</div>';
 
@@ -1560,7 +1608,6 @@
           html += `<label class="alt-radio-option">
             <input type="radio" name="conflict-${idx}" value="${JSON.stringify(alt).replace(/"/g, '&quot;')}" id="${radioId}"/>
             <span class="alt-type">${alt.connection_type}</span>
-            <span class="alt-driver-status ${alt.driver_status}">${alt.driver_status}</span>
           </label>`;
         });
         
@@ -1581,45 +1628,10 @@
     updateRunBtn();
   }
 
-  function getDriverStatusColor(status) {
-    switch(status) {
-      case 'mainline': return '#0E8420';
-      case 'backport': return '#F99B11';
-      case 'vendor': return '#E95420';
-      default: return '#AEA79F';
-    }
-  }
 
   /* ── Component rendering ──────────────────────────────────────── */
-  function renderBoardSection(boardData) {
-    const section = document.getElementById('board-section');
-    const details = document.getElementById('board-details');
-    
-    if (!boardData.soc) {
-      section.style.display = 'none';
-      return;
-    }
-    
-    const fields = [
-      { label: 'Board Name', value: boardData.board_name || '—' },
-      { label: 'SoC', value: boardData.soc || '—' },
-      { label: 'Architecture', value: boardData.arch || '—' },
-      { label: 'CPU Core', value: boardData.cpu_core || '—' },
-      { label: 'CPU Count', value: boardData.cpu_count ? `${boardData.cpu_count} cores` : '—' },
-      { label: 'CPU Frequency', value: boardData.cpu_freq_mhz ? `${boardData.cpu_freq_mhz} MHz` : '—' },
-      { label: 'RAM', value: boardData.ram_mb ? `${boardData.ram_mb} MB` : '—' },
-      { label: 'Power Rails', value: boardData.power_rails ? `${boardData.power_rails.length} rail(s)` : '—' },
-    ];
-    
-    details.innerHTML = fields.map(f => `
-      <div class="board-detail">
-        <div class="label">${f.label}</div>
-        <div class="value">${f.value}</div>
-      </div>`).join('');
-    
-    section.style.display = 'block';
-  }
-  
+
+  const TYPE_ICONS = {
     i2c:'🔗', spi:'⚡', uart:'📡', usart:'📡', gpio:'🔌', pwm:'🌀',
     usb:'🔷', ethernet:'🌐', can:'🚗', can_fd:'🚗', hdmi:'🖥',
     mipi_csi:'📷', mipi_dsi:'🖥', camera:'📷', lvds:'📺',
@@ -1627,7 +1639,13 @@
     i2s:'🎵', sai:'🎵', audio:'🎵', adc:'📊', dac:'📈',
     qspi:'⚡', jtag:'🔧', swd:'🔧', rtc:'🕐', watchdog:'⏱',
     displayport:'🖥', nand:'💾', nor_flash:'💾', hyperflash:'💾',
-    touch:'👆', other:'⚙️',
+    touch:'👆', other:'⚙️', display:'🖥', touchscreen:'👆',
+    // Accelerators & Processors
+    npu:'🧠', gpu:'🎮', tpu:'⚙️', cpu:'📍', dsp:'🔊', accelerator:'💨',
+    // New component types
+    security:'🔐', power:'🔋', acpi:'⚙️', sensor_temperature:'🌡️',
+    sensor_accelerometer:'📳', sensor_light:'💡', sensor_proximity:'📍',
+    sensor_pressure:'⚖️', sensor_humidity:'💧', pmic:'🔌', led:'💡',
   };
 
   function renderComponents(peripherals) {
@@ -1646,9 +1664,22 @@
       const icName = p.component_ic?.name || p.ic || (p.name.includes('(') ? p.name.substring(p.name.indexOf('(') + 1, p.name.indexOf(')')) : '');
       if (icName) tableHtml += `<tr><td>IC:</td><td>${icName}</td></tr>`;
       
-      // Connection type
+      // Manufacturer (from LLM detection)
+      const manufacturer = p.manufacturer || p.component_ic?.vendor || '';
+      if (manufacturer) tableHtml += `<tr><td>Mfg:</td><td>${manufacturer}</td></tr>`;
+      
+      // Version/Generation
+      const version = p.version || '';
+      if (version) tableHtml += `<tr><td>Version:</td><td>${version}</td></tr>`;
+      
+      // Variant (specific model)
+      const variant = p.variant || '';
+      if (variant) tableHtml += `<tr><td>Variant:</td><td>${variant}</td></tr>`;
+      
+      // Connection type + version
       const connType = p.connection_type || p.bus || '';
-      if (connType) tableHtml += `<tr><td>Connection:</td><td>${connType}</td></tr>`;
+      const connVersion = p.connection_version || '';
+      if (connType) tableHtml += `<tr><td>Connection:</td><td>${connType}${connVersion ? ` (${connVersion})` : ''}</td></tr>`;
       
       // Address (if applicable)
       if (p.address && p.address !== 'null') tableHtml += `<tr><td>Address:</td><td>${p.address}</td></tr>`;
@@ -1692,27 +1723,26 @@
     const validation = window._validationData || { conflicts: [] };
     const unresolved = validation.conflicts || [];
     
-    // Check if all conflicts have alternatives selected
-    let hasUnresolvedConflicts = false;
+    // Check if all conflicts with alternatives have one selected
+    let hasUnresolvedAlternatives = false;
     if (unresolved.length > 0) {
-      // For each conflict, check if it has alternatives and if one is selected
+      // For each conflict WITH alternatives, check if one is selected
       for (let i = 0; i < unresolved.length; i++) {
         const conflict = unresolved[i];
-        if (!conflict.alternatives || conflict.alternatives.length === 0) {
-          // No alternatives available - cannot proceed
-          hasUnresolvedConflicts = true;
-          break;
+        // Only require selection if alternatives exist
+        if (conflict.alternatives && conflict.alternatives.length > 0) {
+          const selected = document.querySelector(`input[name="conflict-${i}"]:checked`);
+          if (!selected) {
+            hasUnresolvedAlternatives = true;
+            break;
+          }
         }
-        // Check if an alternative is selected for this conflict
-        const selected = document.querySelector(`input[name="conflict-${i}"]:checked`);
-        if (!selected) {
-          hasUnresolvedConflicts = true;
-          break;
-        }
+        // NO SOLUTION conflicts (no alternatives) are allowed - continue with warning
       }
     }
     
-    document.getElementById('run-btn').disabled = !(sessionId && any && !hasUnresolvedConflicts);
+    // Enable RUN if: components selected + no unresolved alternatives + session exists
+    document.getElementById('run-btn').disabled = !(sessionId && any && !hasUnresolvedAlternatives);
   }
 
   function getSelectedIds() {
@@ -1737,8 +1767,20 @@
     document.getElementById('run-btn').disabled = true;
     clearTerminal();
     switchTab('terminal');
-    logMsg(`🚀 Starting pipeline — ${selected.length} component(s) selected` +
-           (Object.keys(alternatives).length > 0 ? ` + ${Object.keys(alternatives).length} alternative(s)` : ''));
+    
+    // Check for unresolved conflicts (NO SOLUTION cases)
+    const validation = window._validationData || { conflicts: [] };
+    const noSolutionCount = (validation.conflicts || [])
+      .filter(c => !c.alternatives || c.alternatives.length === 0).length;
+    
+    let msg = `🚀 Starting pipeline — ${selected.length} component(s) selected`;
+    if (Object.keys(alternatives).length > 0) {
+      msg += ` + ${Object.keys(alternatives).length} alternative(s)`;
+    }
+    if (noSolutionCount > 0) {
+      msg += ` ⚠️ (${noSolutionCount} with no solution — will proceed with defaults)`;
+    }
+    logMsg(msg);
 
     const resp = await fetch('/api/generate', {
       method:  'POST',
@@ -1798,7 +1840,27 @@
     renderMermaid(r.mermaid);
 
     // RACI matrix
-    if (r.raci_html) renderRaci(r.raci_html, r.files.raci, r.recommended_uc);
+    if (r.raci_html && String(r.raci_html).trim()) {
+      renderRaci(r.raci_html, r.files.raci, r.recommended_uc);
+    } else if (sessionId) {
+      fetch('/api/raci', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId }),
+      })
+      .then(res => res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`)))
+      .then(data => {
+        if (data && data.raci_html && String(data.raci_html).trim()) {
+          renderRaci(data.raci_html, r.files?.raci || '', data.recommended_uc || '');
+          logMsg('✅ RACI matrix loaded from session cache', 'log');
+        } else {
+          logMsg('⚠️ RACI data available but empty', 'error');
+        }
+      })
+      .catch(err => {
+        logMsg(`⚠️ Failed to load RACI matrix: ${err.message}`, 'error');
+      });
+    }
 
     // Downloads
     renderDownloads(r.files);

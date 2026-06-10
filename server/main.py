@@ -25,7 +25,7 @@ from pydantic import BaseModel
 
 # add parent dir so we can import agents
 sys.path.insert(0, str(Path(__file__).parent))
-from agents import librarian, dt_architect, snap_engineer, kernel_scout, raci_builder, bus_validator, component_validator
+from agents import librarian, dt_architect, snap_engineer, kernel_scout, raid_builder, bus_validator, component_validator
 
 # Suppress fontTools FontBBox warnings (cosmetic, doesn't affect extraction)
 logging.getLogger("fontTools").setLevel(logging.ERROR)
@@ -149,10 +149,13 @@ def _extract_pdf_sections(data: bytes) -> list[dict]:
     return sections
 
 
-def _fetch_url_content(url: str) -> tuple[str, str]:
+def _fetch_url_content(url: str) -> tuple[bytes | str, str]:
     """
-    Fetch content from URL (HTML, Markdown, GitHub, datasheets).
-    Returns: (content_text, source_type: 'html'|'markdown'|'github'|'text')
+    Fetch content from URL (PDF, HTML, Markdown, GitHub, datasheets, plain text).
+    Returns: (content, source_type)
+    - PDF: (bytes, 'pdf')
+    - HTML: (text, 'html')
+    - Markdown/Text: (text, 'markdown'|'text'|'github')
     """
     if not url or not isinstance(url, str):
         raise ValueError("Invalid URL")
@@ -162,13 +165,17 @@ def _fetch_url_content(url: str) -> tuple[str, str]:
     if not url.startswith(("http://", "https://")):
         url = f"https://{url}"
     
-    headers = {"User-Agent": "pdf-to-gadget/1.0"}
+    headers = {"User-Agent": "pdf-to-gadget/1.0 (+http://localhost:8000)"}
     
     try:
         req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=10) as response:
+        with urllib.request.urlopen(req, timeout=15) as response:
             data = response.read()
             content_type = response.headers.get("Content-Type", "").lower()
+            
+            # PDF content (return as bytes for pdfplumber)
+            if "application/pdf" in content_type or url.lower().endswith(".pdf"):
+                return data, "pdf"
             
             # GitHub raw content or markdown
             if "github.com" in url:
@@ -184,11 +191,15 @@ def _fetch_url_content(url: str) -> tuple[str, str]:
                 parser.feed(data.decode("utf-8", errors="ignore"))
                 return parser.get_text(), "html"
             
-            # Plain text / Markdown
+            # Plain text / Markdown / other text-based formats
             if "text/plain" in content_type or "text/markdown" in content_type:
                 return data.decode("utf-8"), "markdown"
             
-            # Try decoding as text (fallback)
+            # Try decoding as text (fallback for unknown types)
+            if url.lower().endswith((".txt", ".md", ".rst", ".adoc")):
+                return data.decode("utf-8"), "text"
+            
+            # Last resort: try UTF-8, fall back to latin-1
             try:
                 return data.decode("utf-8"), "text"
             except:
@@ -604,14 +615,26 @@ async def upload_from_url(req: URLUploadRequest):
                     content, source_type = await asyncio.get_event_loop().run_in_executor(
                         None, _fetch_url_content, url
                     )
-                    yield _event(f"  ✓ Fetched ({len(content)} chars, type: {source_type})", "log")
                     
-                    # Parse into sections
-                    sections = _parse_url_sections(content, source_type, url)
-                    yield _event(f"  ✓ Parsed {len(sections)} section(s)", "log")
-                    
-                    # Simulate "file" with URL as filename
-                    files_data.append((content.encode("utf-8"), f"url-{url_idx}:{url}"))
+                    # Handle PDF content (binary)
+                    if source_type == "pdf":
+                        # content is bytes; add to files_data with .pdf filename
+                        filename = f"url-{url_idx}.pdf"
+                        yield _event(f"  ✓ Fetched PDF ({len(content)} bytes)", "log")
+                        files_data.append((content, filename))
+                    else:
+                        # Handle text-based content (HTML, Markdown, plain text, etc.)
+                        if isinstance(content, bytes):
+                            content = content.decode("utf-8", errors="replace")
+                        yield _event(f"  ✓ Fetched text ({len(content)} chars, type: {source_type})", "log")
+                        
+                        # Parse into sections
+                        sections = _parse_url_sections(content, source_type, url)
+                        yield _event(f"  ✓ Parsed {len(sections)} section(s)", "log")
+                        
+                        # Create a text file representation
+                        filename = f"url-{url_idx}:{source_type}"
+                        files_data.append((content.encode("utf-8"), filename))
                     
                 except Exception as e:
                     yield _event(f"  ⚠️  Failed to fetch {url}: {str(e)}", "error")
@@ -887,7 +910,7 @@ async def _pipeline_stream(session_id: str, selected_ids: list[str], alternative
         except Exception as e_online:
             yield event(f"⚠️  GitHub-enriched lookup failed ({e_online}) — retrying offline", "log")
             drivers = kernel_scout.lookup_drivers(filtered_map, online=False)
-        raid_data  = raci_builder.build(filtered_map, drivers)
+        raid_data  = raid_builder.build(filtered_map, drivers)
         raid_path  = OUTPUT_DIR / f"{session_id}_raid.csv"
         raid_path.write_text(raid_data["raid_csv"])
         mainline_n = sum(1 for d in drivers if d.get("status") == "mainline")
@@ -965,7 +988,7 @@ async def get_raid(req: RaidRequest):
     hw_map = session["hw_map"]
     try:
         drivers   = kernel_scout.lookup_drivers(hw_map, online=False)
-        raid_data = raci_builder.build(hw_map, drivers)
+        raid_data = raid_builder.build(hw_map, drivers)
         session["raid"] = raid_data
         return raid_data
     except Exception as e:

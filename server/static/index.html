@@ -109,7 +109,7 @@
   .pill-lib   { color: #E95420; border-color: rgba(233,84,32,.6); }
   .pill-dt    { color: #AEA79F; border-color: rgba(174,167,159,.5); }
   .pill-snap  { color: #0E8420; border-color: rgba(14,132,32,.6); }
-  .pill-raci  { color: #F99B11; border-color: rgba(249,155,17,.5); }
+  .pill-raid  { color: #F99B11; border-color: rgba(249,155,17,.5); }
 
   /* model selector */
   .model-select-wrap {
@@ -518,13 +518,13 @@
   .placeholder .big { font-size: 48px; }
   .placeholder p { font-size: 14px; }
 
-  /* RACI Matrix */
-  .raci-container {
+  /* RAID Matrix */
+  .raid-container {
     flex: 1;
     overflow: auto;
     padding: 16px;
   }
-  .raci-wrap {
+  .raid-wrap {
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -553,9 +553,9 @@
   .uc-card-sub   { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
   .uc-card-score { font-size: 12px; margin-bottom: 4px; color: var(--text); }
   .uc-card-counts { font-size: 11px; line-height: 1.8; }
-  .raci-table th.uc-rec { background: #1a3d1a; color: #68d17a; }
-  .raci-table td.uc-rec { outline: 1px solid rgba(104,209,122,.5); }
-  .raci-legend {
+  .raid-table th.uc-rec { background: #1a3d1a; color: #68d17a; }
+  .raid-table td.uc-rec { outline: 1px solid rgba(104,209,122,.5); }
+  .raid-legend {
     font-size: 12px;
     color: var(--muted);
     padding: 8px 12px;
@@ -564,20 +564,20 @@
     border: 1px solid var(--border);
     line-height: 1.8;
   }
-  .raci-toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-  .raci-table-scroll {
+  .raid-toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .raid-table-scroll {
     overflow-x: auto;
     border-radius: var(--radius);
     border: 1px solid var(--border);
   }
-  .raci-table {
+  .raid-table {
     border-collapse: collapse;
     width: 100%;
     font-size: 12.5px;
     font-family: "Ubuntu", sans-serif;
     min-width: 960px;
   }
-  .raci-table th {
+  .raid-table th {
     background: var(--canonical-aubergine);
     color: #fff;
     padding: 8px 10px;
@@ -587,21 +587,21 @@
     white-space: nowrap;
     letter-spacing: .03em;
   }
-  .raci-table td {
+  .raid-table td {
     padding: 7px 10px;
     border-bottom: 1px solid var(--border);
     vertical-align: middle;
     color: var(--text);
   }
-  .raci-table tr:hover td { background: rgba(233,84,32,.04); }
-  .raci-table code {
+  .raid-table tr:hover td { background: rgba(233,84,32,.04); }
+  .raid-table code {
     background: rgba(255,255,255,.07);
     padding: 2px 5px;
     border-radius: 2px;
     font-size: 11px;
     font-family: "Ubuntu Mono", monospace;
   }
-  .raci-badge {
+  .raid-badge {
     display: inline-block;
     padding: 2px 8px;
     border-radius: 2px;
@@ -611,20 +611,28 @@
     text-transform: uppercase;
   }
   .uc-col { text-align: center; min-width: 90px; }
-  .raci-r, .raci-a, .raci-i {
+  .raid-r, .raid-a, .raid-i {
     text-align: center;
     font-weight: 700;
     font-size: 13px;
     cursor: default;
   }
-  .raci-r { color: var(--canonical-orange); }
-  .raci-a { color: #AEA79F; }
-  .raci-c { color: #d2a8ff; font-size: 11px; }
-  .raci-i { color: #666; }
-  .raci-table a { color: var(--canonical-orange); text-decoration: none; }
-  .raci-table a:hover { text-decoration: underline; }
+  .raid-r { color: var(--canonical-orange); }
+  .raid-a { color: #AEA79F; }
+  .raid-c { color: #d2a8ff; font-size: 11px; }
+  .raid-i { color: #666; }
+  .raid-table a { color: var(--canonical-orange); text-decoration: none; }
+  .raid-table a:hover { text-decoration: underline; }
   .c-text { max-width: 160px; display: inline-block; overflow: hidden;
             text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
+
+  /* RAID Analysis enhancements */
+  .raid-analysis { display: flex; flex-direction: column; gap: 16px; }
+  .raid-content { display: flex; flex-direction: column; gap: 12px; }
+  .raid-toolbar .btn-small:hover { 
+    opacity: 0.9; 
+    box-shadow: 0 2px 8px rgba(233,84,32,0.3);
+  }
 
   /* Downloads panel */
   .downloads-panel {
@@ -915,7 +923,7 @@
     <span class="pill pill-lib">@librarian</span>
     <span class="pill pill-dt">@dt_architect</span>
     <span class="pill pill-snap">@snap_engineer</span>
-    <span class="pill pill-raci">@kernel_scout</span>
+    <span class="pill pill-raid">@kernel_scout</span>
     <div class="model-select-wrap">
       <label>Model</label>
       <select id="model-select">
@@ -940,19 +948,36 @@
     <!-- Upload -->
     <div class="panel-section upload-section">
       <h2>📄 Datasheet</h2>
-      <div class="upload-zone" id="upload-zone">
-        <div class="icon">📂</div>
-        <p>Drop <strong>PDF or TXT</strong> datasheets here<br/>or <strong>click to browse</strong></p>
-      </div>
-      <input type="file" id="file-input" accept=".pdf,.txt,.text" multiple/>
       
+      <!-- Upload method tabs -->
+      <div class="upload-tabs" style="display: flex; gap: 8px; margin-bottom: 12px; border-bottom: 1px solid var(--border);">
+        <button class="upload-tab-btn active" data-upload-tab="file" style="flex: 1; padding: 10px; background: none; border: none; color: var(--text); cursor: pointer; border-bottom: 2px solid var(--canonical-orange); font-weight: 500; font-size: 13px;">📂 Upload File</button>
+        <button class="upload-tab-btn" data-upload-tab="url" style="flex: 1; padding: 10px; background: none; border: none; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; font-weight: 500; font-size: 13px;">🔗 Add URL</button>
+      </div>
+
+      <!-- File upload section -->
+      <div class="upload-tab-content" id="upload-tab-file">
+        <div class="upload-zone" id="upload-zone">
+          <div class="icon">📂</div>
+          <p>Drop <strong>PDF or TXT</strong> datasheets here<br/>or <strong>click to browse</strong></p>
+        </div>
+        <input type="file" id="file-input" accept=".pdf,.txt,.text" multiple/>
+      </div>
+
+      <!-- URL upload section -->
+      <div class="upload-tab-content" id="upload-tab-url" style="display: none;">
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <textarea id="url-input" placeholder="Paste URL(s) here — one per line or comma-separated&#10;Examples:&#10;https://example.com/datasheet.pdf&#10;https://raw.github.com/vendor/repo/README.md&#10;https://docs.example.com/specs.html" style="width: 100%; height: 100px; padding: 10px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-family: 'Ubuntu Mono', monospace; font-size: 12px; resize: vertical;"></textarea>
+          <button class="btn" id="url-upload-btn" style="width: 100%;">🔗 Fetch & Parse URL(s)</button>
+          <div id="url-info" style="display: none; margin-top: 8px; padding: 8px; background: var(--surface); border-left: 3px solid var(--canonical-orange); border-radius: var(--radius); color: var(--muted); font-size: 12px;"></div>
+        </div>
+      </div>
+
       <!-- File list for multiple uploads -->
-      <div class="file-list" id="file-list" style="display:none;">
+      <div class="file-list" id="file-list" style="display:none; margin-top: 12px;">
         <div id="file-items"></div>
         <button class="btn" id="upload-btn" style="width: 100%; margin-top: 8px;">📤 Upload Files</button>
       </div>
-      
-      <!-- Selected file info (shown after upload) -->
       <div class="file-info" id="file-info" style="display:none;">
         <span class="icon">📄</span>
         <span class="name" id="file-name"></span>
@@ -1029,7 +1054,7 @@
       <div class="tab" data-tab="dts">🌳 Device Tree</div>
       <div class="tab" data-tab="gadget">📦 gadget.yaml</div>
       <div class="tab" data-tab="snapcraft">🔧 snapcraft.yaml</div>
-      <div class="tab" data-tab="raci">🔬 RACI Matrix</div>
+      <div class="tab" data-tab="raid">🔬 RAID Matrix</div>
       <div class="tab" data-tab="downloads">⬇ Downloads</div>
     </div>
 
@@ -1085,12 +1110,13 @@
       </div>
     </div>
 
-    <!-- RACI tab -->
-    <div class="tab-content" id="tab-raci">
-      <div class="raci-container" id="raci-container">
+    <!-- RAID/RAID Analysis tab -->
+    <div class="tab-content" id="tab-raid">
+      <div class="raid-container" id="raid-container">
         <div class="placeholder">
           <div class="big">🔬</div>
-          <p>RACI matrix appears after pipeline runs</p>
+          <p>RAID matrix appears after pipeline runs</p>
+          <p style="font-size: 11px; color: var(--muted); margin-top: 8px;">Analyzes kernel drivers for each component</p>
         </div>
       </div>
     </div>
@@ -1265,6 +1291,145 @@
       document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active');
     });
   });
+
+  /* ── Upload method tabs ────────────────────────────────────────── */
+  document.querySelectorAll('.upload-tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.uploadTab;
+      
+      // Update active button
+      document.querySelectorAll('.upload-tab-btn').forEach(b => {
+        b.classList.remove('active');
+        b.style.color = 'var(--muted)';
+        b.style.borderBottomColor = 'transparent';
+      });
+      btn.classList.add('active');
+      btn.style.color = 'var(--text)';
+      btn.style.borderBottomColor = 'var(--canonical-orange)';
+      
+      // Show/hide content
+      document.querySelectorAll('.upload-tab-content').forEach(content => content.style.display = 'none');
+      document.getElementById(`upload-tab-${tab}`).style.display = 'block';
+    });
+  });
+
+  /* ── URL upload handling ──────────────────────────────────────── */
+  const urlInput = document.getElementById('url-input');
+  const urlUploadBtn = document.getElementById('url-upload-btn');
+  const urlInfo = document.getElementById('url-info');
+  
+  urlUploadBtn.addEventListener('click', uploadFromURL);
+  
+  async function uploadFromURL() {
+    const urlText = urlInput.value.trim();
+    if (!urlText) {
+      urlInfo.textContent = '❌ Please paste at least one URL';
+      urlInfo.style.display = 'block';
+      return;
+    }
+    
+    // Parse URLs (handle both comma and newline separated)
+    const urls = urlText
+      .split(/[,\n]+/)
+      .map(u => u.trim())
+      .filter(u => u.length > 0);
+    
+    if (urls.length === 0) {
+      urlInfo.textContent = '❌ No valid URLs found';
+      urlInfo.style.display = 'block';
+      return;
+    }
+    
+    currentUploadId = null;
+    stopUploadPending = false;
+    urlUploadBtn.disabled = true;
+    urlInfo.style.display = 'block';
+    urlInfo.textContent = `⏳ Fetching ${urls.length} URL(s)…`;
+    
+    switchTab('terminal');
+    clearTerminal();
+    logMsg(`🔗 Fetching ${urls.length} URL(s) via ${modelSel.value || 'auto-detect'}…`);
+    
+    stopUploadBtn.style.display = 'block';
+    stopUploadBtn.disabled = false;
+
+    try {
+      const body = {
+        urls: urls,
+        model: modelSel.value || '',
+        api_key: getActiveApiKey() || '',
+        disable_heuristic_fallback: document.getElementById('llm-only-mode').checked ? 'true' : 'false'
+      };
+      
+      const res = await fetch('/api/upload-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail || 'URL upload failed');
+      }
+
+      // Handle SSE stream (same as file upload)
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const evt = JSON.parse(line.slice(6));
+              if (evt.type === 'upload_started') {
+                currentUploadId = evt.upload_id;
+                if (stopUploadPending) {
+                  requestStopUpload();
+                  stopUploadPending = false;
+                }
+              } else if (evt.type === 'log') {
+                logMsg(evt.message, 'log');
+              } else if (evt.type === 'error') {
+                logMsg(evt.message, 'error');
+              } else if (evt.type === 'upload_done') {
+                sessionId = evt.session_id;
+                hwMap = evt.hw_map;
+                renderComponents(hwMap.peripherals || []);
+                logMsg(`✓ Extraction complete. ${(hwMap.peripherals || []).length} peripheral(s) detected.`);
+              } else if (evt.type === 'result') {
+                sessionId = evt.data.session_id;
+                hwMap = evt.data.hw_map;
+                renderComponents(hwMap.peripherals || []);
+              } else if (evt.type === 'conflict') {
+                logMsg(evt.message, 'conflict');
+              }
+            } catch (e) {
+              // Ignore JSON parse errors for non-data lines
+            }
+          }
+        }
+      }
+
+      urlInfo.textContent = '✓ URL(s) processed successfully';
+      urlInfo.style.color = '#0E8420';
+      urlUploadBtn.disabled = false;
+      
+    } catch (err) {
+      logMsg(`❌ URL upload failed: ${err.message}`, 'error');
+      urlInfo.textContent = `❌ ${err.message}`;
+      urlInfo.style.color = '#C7162B';
+      urlUploadBtn.disabled = false;
+    } finally {
+      stopUploadBtn.style.display = 'none';
+    }
+  }
 
   /* ── Multi-file upload handling ────────────────────────────────── */
   const zone     = document.getElementById('upload-zone');
@@ -1839,26 +2004,26 @@
     // Mermaid diagram
     renderMermaid(r.mermaid);
 
-    // RACI matrix
-    if (r.raci_html && String(r.raci_html).trim()) {
-      renderRaci(r.raci_html, r.files.raci, r.recommended_uc);
+    // RAID matrix
+    if (r.raid_html && String(r.raid_html).trim()) {
+      renderRaid(r.raid_html, r.files.raid, r.recommended_uc);
     } else if (sessionId) {
-      fetch('/api/raci', {
+      fetch('/api/raid', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: sessionId }),
       })
       .then(res => res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`)))
       .then(data => {
-        if (data && data.raci_html && String(data.raci_html).trim()) {
-          renderRaci(data.raci_html, r.files?.raci || '', data.recommended_uc || '');
-          logMsg('✅ RACI matrix loaded from session cache', 'log');
+        if (data && data.raid_html && String(data.raid_html).trim()) {
+          renderRaid(data.raid_html, r.files?.raid || '', data.recommended_uc || '');
+          logMsg('✅ RAID matrix loaded from session cache', 'log');
         } else {
-          logMsg('⚠️ RACI data available but empty', 'error');
+          logMsg('⚠️ RAID data available but empty', 'error');
         }
       })
       .catch(err => {
-        logMsg(`⚠️ Failed to load RACI matrix: ${err.message}`, 'error');
+        logMsg(`⚠️ Failed to load RAID matrix: ${err.message}`, 'error');
       });
     }
 
@@ -1875,28 +2040,44 @@
     document.getElementById('mermaid-target').innerHTML = svg;
   }
 
-  function renderRaci(html, csvHref, recommended) {
-    const wrap = document.getElementById('raci-container');
+  function renderRaid(html, csvHref, recommended) {
+    const wrap = document.getElementById('raid-container');
     const recBadge = recommended
-      ? `<span style="background:#1a3d1a;color:#66ff66;padding:3px 10px;border-radius:10px;
-                       font-size:12px;font-weight:700;border:1px solid #66ff66;">
-           👑 ${recommended} recommended
+      ? `<span style="background:#1a3d1a;color:#66ff66;padding:6px 14px;border-radius:8px;
+                       font-size:13px;font-weight:700;border:1px solid #66ff66;">
+           👑 ${recommended} Recommended
          </span>`
       : '';
     const toolbar = `
-      <div class="raci-toolbar" style="margin-bottom:8px;">
-        <a href="${csvHref || '#'}" download="raci.csv" class="btn-small" style="text-decoration:none;">⬇ Download CSV</a>
-        ${recBadge}
+      <div class="raid-toolbar" style="margin-bottom:16px; padding:12px; background:var(--surface); border-radius:var(--radius); border:1px solid var(--border); display:flex; gap:12px; align-items:center; flex-wrap:wrap; justify-content:space-between;">
+        <div style="display:flex; gap:8px; align-items:center;">
+          <a href="${csvHref || '#'}" download="raid.csv" class="btn-small" style="text-decoration:none; background:var(--canonical-orange); color:white; padding:6px 14px; border-radius:6px; font-size:13px; cursor:pointer; border:none; transition:all 0.2s;">⬇ Download CSV</a>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <span style="color:var(--muted); font-size:12px;">Ubuntu Core compatibility:</span>
+          ${recBadge}
+        </div>
       </div>`;
-    wrap.innerHTML = toolbar + html;
+    
+    const content = `
+      <div class="raid-analysis">
+        ${toolbar}
+        <div class="raid-content" style="overflow-x:auto;">
+          ${html}
+        </div>
+      </div>`;
+    
+    wrap.innerHTML = content;
+    logMsg('✅ RAID analysis loaded — kernel driver compatibility for all components', 'log');
   }
+
 
   function renderDownloads(files) {
     const items = [
       { icon: '🌳', name: 'board.dts',         desc: 'Linux Device Tree Source', href: files.dts },
       { icon: '📦', name: 'gadget.yaml',        desc: 'Ubuntu Core Gadget config', href: files.gadget },
       { icon: '🔧', name: 'snapcraft.yaml',     desc: 'Snapcraft build recipe',   href: files.snapcraft },
-      { icon: '🔬', name: 'raci.csv',          desc: 'RACI matrix (CSV)',        href: files.raci },
+      { icon: '🔬', name: 'raid.csv',          desc: 'RAID matrix (CSV)',        href: files.raid },
       { icon: '🗂',  name: 'hardware_map.json',  desc: 'Parsed hardware map',      href: files.map },
     ];
     document.getElementById('downloads-panel').innerHTML = items.map(i => `

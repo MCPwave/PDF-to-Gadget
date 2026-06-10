@@ -695,12 +695,140 @@ def _repo_candidates(peripheral: dict, driver_info: dict) -> list[str]:
     return candidates
 
 
+def _search_vendor_public_repos(
+    peripheral_name: str, 
+    driver_module: str, 
+    driver_status: str,
+    soc: str,
+) -> Optional[dict]:
+    """
+    Search vendor public repositories for drivers not found in Linux kernel.
+    This is a targeted search across known vendor repos and generic driver searches.
+    
+    Returns dict with driver source info:
+      {
+        "found": bool,
+        "github_repo_name": str,
+        "github_repo_url": str,
+        "github_url": str,        # Direct link to driver file
+        "github_path": str,
+        "driver_source": str,     # "kernel" | "vendor_public" | "vendor_bsp"
+      }
+    """
+    # Only search vendor repos if driver not found in kernel
+    if driver_status and driver_status in ("mainline", "backport"):
+        return None
+    
+    if not peripheral_name and not driver_module:
+        return None
+    
+    # Build search terms
+    search_terms = []
+    if driver_module and driver_module not in ("unknown", "N/A"):
+        search_terms.append(driver_module)
+    if peripheral_name and peripheral_name not in ("unknown", "N/A"):
+        # Add full name and component model number
+        search_terms.append(peripheral_name)
+        # Extract IC/chip model (e.g., "ov5640" from "OV5640 Camera Sensor")
+        match = re.search(r'([A-Za-z0-9]{4,})', peripheral_name)
+        if match:
+            search_terms.append(match.group(1))
+    
+    # Add SoC-specific repos (e.g., Raspberry Pi, Rockchip, NXP, etc.)
+    soc_lower = (soc or "").lower()
+    vendor_orgs = []
+    if "bcm" in soc_lower or "raspberry" in soc_lower:
+        vendor_orgs.extend(["raspberrypi", "broadcom"])
+    if "rk3" in soc_lower or "rockchip" in soc_lower:
+        vendor_orgs.extend(["rockchip"])
+    if "imx" in soc_lower or "nxp" in soc_lower:
+        vendor_orgs.extend(["nxp-imx"])
+    if "mediatek" in soc_lower or "mt" in soc_lower:
+        vendor_orgs.extend(["MediaTek"])
+    if "stm32" in soc_lower or "st" in soc_lower:
+        vendor_orgs.extend(["STMicroelectronics"])
+    if "allwinner" in soc_lower or "h3" in soc_lower or "h5" in soc_lower:
+        vendor_orgs.extend(["Allwinner"])
+    
+    # Search in vendor organizations first
+    for org in vendor_orgs:
+        for term in search_terms[:2]:  # Limit to top 2 search terms per org
+            q = urllib.parse.urlencode({
+                "q": f"{term} org:{org} language:C",
+                "per_page": "3",
+                "sort": "stars",
+            })
+            url = f"https://api.github.com/search/repositories?{q}"
+            try:
+                req = urllib.request.Request(url, headers=_github_headers())
+                with urllib.request.urlopen(req, timeout=_GH_TIMEOUT) as r:
+                    data = json.loads(r.read())
+                repos = data.get("items", [])[:3]
+                
+                for repo in repos:
+                    repo_name = repo.get("full_name", "")
+                    if not repo_name:
+                        continue
+                    
+                    # Search for driver code in this repo
+                    for code_term in search_terms[:2]:
+                        hit = _github_search_code_in_repo(code_term, repo_name)
+                        if hit:
+                            return {
+                                "found": True,
+                                "github_repo_name": repo_name,
+                                "github_repo_url": repo.get("html_url", ""),
+                                "github_url": hit.get("github_url", ""),
+                                "github_path": hit.get("github_path", ""),
+                                "driver_source": "vendor_public",
+                            }
+            except Exception:
+                pass
+    
+    # Fallback: broad search across all of GitHub
+    for term in search_terms[:1]:
+        q = urllib.parse.urlencode({
+            "q": f'"{term}" driver language:C -repo:torvalds/linux',
+            "per_page": "3",
+            "sort": "stars",
+        })
+        url = f"https://api.github.com/search/repositories?{q}"
+        try:
+            req = urllib.request.Request(url, headers=_github_headers())
+            with urllib.request.urlopen(req, timeout=_GH_TIMEOUT) as r:
+                data = json.loads(r.read())
+            repos = data.get("items", [])[:3]
+            
+            for repo in repos:
+                repo_name = repo.get("full_name", "")
+                if not repo_name:
+                    continue
+                
+                hit = _github_search_code_in_repo(term, repo_name)
+                if hit:
+                    return {
+                        "found": True,
+                        "github_repo_name": repo_name,
+                        "github_repo_url": repo.get("html_url", ""),
+                        "github_url": hit.get("github_url", ""),
+                        "github_path": hit.get("github_path", ""),
+                        "driver_source": "vendor_public",
+                    }
+        except Exception:
+            pass
+    
+    return None
+
+
 def _lookup_manufacturer_repo(peripheral: dict, driver_info: dict) -> dict:
     """
     Try to find a manufacturer GitHub repo for the component or driver.
     Returns repo_url/repo_name plus optional source file hit.
+    Also searches vendor public repos if driver not found in Linux kernel.
     """
     module_name = driver_info.get("module", "")
+    driver_status = driver_info.get("status", "")
+    soc = peripheral.get("soc", "") if isinstance(peripheral, dict) else ""
     
     # Special case: vendor-specific components with hardcoded repos
     for comp_key, comp_info in _VENDOR_COMPONENTS.items():
@@ -713,6 +841,7 @@ def _lookup_manufacturer_repo(peripheral: dict, driver_info: dict) -> dict:
                     "github_repo_url": repo_url,
                     "github_url": repo_url,
                     "github_path": comp_info.get("path", ""),
+                    "driver_source": "vendor_public",
                 }
     
     component_ic = peripheral.get("component_ic") if isinstance(peripheral.get("component_ic"), dict) else {}
@@ -739,6 +868,7 @@ def _lookup_manufacturer_repo(peripheral: dict, driver_info: dict) -> dict:
                     "github_repo_url": repo_url,
                     "github_url": hit.get("github_url", ""),
                     "github_path": hit.get("github_path", ""),
+                    "driver_source": "vendor_public",
                 }
 
         # No file hit, still expose repo candidate.
@@ -747,6 +877,23 @@ def _lookup_manufacturer_repo(peripheral: dict, driver_info: dict) -> dict:
             "github_repo_url": repo_url,
             "github_url": "",
             "github_path": "",
+            "driver_source": "vendor_public",
+        }
+    
+    # Search vendor public repos as fallback
+    vendor_search = _search_vendor_public_repos(
+        peripheral.get("name", ""),
+        module_name,
+        driver_status,
+        soc,
+    )
+    if vendor_search and vendor_search.get("found"):
+        return {
+            "github_repo_name": vendor_search.get("github_repo_name", ""),
+            "github_repo_url": vendor_search.get("github_repo_url", ""),
+            "github_url": vendor_search.get("github_url", ""),
+            "github_path": vendor_search.get("github_path", ""),
+            "driver_source": "vendor_public",
         }
 
     return {
@@ -754,6 +901,7 @@ def _lookup_manufacturer_repo(peripheral: dict, driver_info: dict) -> dict:
         "github_repo_url": "",
         "github_url": "",
         "github_path": "",
+        "driver_source": "unknown",
     }
 
 
@@ -999,7 +1147,8 @@ def lookup_drivers(
     online: bool = True,
 ) -> list[dict]:
     """
-    For each peripheral in hw_map, find the upstream Linux kernel driver.
+    For each peripheral in hw_map, find the upstream Linux kernel driver
+    and/or vendor public repository driver.
 
     Returns list of dicts:
       {
@@ -1007,6 +1156,7 @@ def lookup_drivers(
         driver_module, kernel_since, kconfig, source_path,
         maintainer, status,              # mainline/backport/vendor/unknown
         github_url,                      # online lookup result (or "")
+        driver_source,                   # "kernel" | "vendor_public" | "unknown"
         effort,                          # low/medium/high/investigate
         notes,
       }
@@ -1053,21 +1203,29 @@ def lookup_drivers(
         # Fall back to generic driver DB if no component/vendor match AND not a generic component
         if info is None and not is_generic:
             info = _lookup_db(soc, ptype)
-        manufacturer_repo = {"github_repo_name": "", "github_repo_url": "", "github_url": "", "github_path": ""}
+        manufacturer_repo = {"github_repo_name": "", "github_repo_url": "", "github_url": "", "github_path": "", "driver_source": "unknown"}
         if online and isinstance(p, dict):
             try:
                 manufacturer_repo = _lookup_manufacturer_repo(p, info or {})
             except Exception:
-                manufacturer_repo = {"github_repo_name": "", "github_repo_url": "", "github_url": "", "github_path": ""}
+                manufacturer_repo = {"github_repo_name": "", "github_repo_url": "", "github_url": "", "github_path": "", "driver_source": "unknown"}
 
         if info is None:
             # Determine reason for no driver info
             if is_generic:
                 notes = "Generic component (no vendor/model specified). Use specific component names (e.g., 'RTX 4090' instead of 'GPU')."
                 effort = "N/A"
+                driver_source = "unknown"
             else:
                 notes = "No driver found in knowledge base."
                 effort = "investigate"
+                # Check vendor repos for unknown drivers
+                driver_source = "unknown"
+                if online:
+                    vendor_search = _search_vendor_public_repos(pname, "", "", soc)
+                    if vendor_search and vendor_search.get("found"):
+                        driver_source = "vendor_public"
+                        notes = f"Driver found in vendor repo: {vendor_search.get('github_repo_name', '')}"
             
             entry = {
                 "peripheral_id":   pid,
@@ -1082,11 +1240,15 @@ def lookup_drivers(
                 "github_url":      "",
                 "github_repo_name": "",
                 "github_repo_url": "",
+                "driver_source":   driver_source,
                 "effort":          effort,
                 "notes":           notes,
             }
         else:
             status = info["status"]
+            # Determine driver source: kernel or vendor public repo
+            driver_source = "kernel" if status in ("mainline", "backport") else (manufacturer_repo.get("driver_source", "unknown"))
+            
             effort = {
                 "mainline": "low",
                 "backport":  "medium",
@@ -1120,6 +1282,7 @@ def lookup_drivers(
                 "github_url":      gh_url,
                 "github_repo_name": gh_repo_name,
                 "github_repo_url": gh_repo_url,
+                "driver_source":   driver_source,
                 "effort":          effort,
                 "notes":           "Manufacturer repo checked" if gh_repo_url else "",
             }

@@ -1,0 +1,143 @@
+# Copilot Cloud Agent Configuration for PDF-to-Gadget
+# Configures dependencies, preinstalls, and MCP servers for enhanced development experience
+
+version: "1.0"
+
+# Pre-install dependencies before cloud agent runs
+preinstall_commands:
+  - pip install --upgrade pip setuptools wheel
+  - pip install -r requirements.txt
+
+# MCP Servers to enable for intelligent tool access
+mcp_servers:
+  # Web UI testing and automation
+  - name: "playwright"
+    description: "Browser automation for end-to-end web UI testing"
+    command: "npx"
+    args: ["@modelcontextprotocol/server-playwright", "--port", "0"]
+    auto_start: true
+    enabled: true
+
+  # File operations and batch processing
+  - name: "filesystem"
+    description: "File read/write operations for batch artifact processing"
+    command: "node"
+    args: ["--require", "@modelcontextprotocol/server-filesystem"]
+    auto_start: true
+    enabled: true
+
+  # PDF processing enhancements
+  - name: "pdf-processor"
+    description: "Advanced PDF parsing and text extraction (complements pdfplumber)"
+    command: "python"
+    args: ["-m", "mcp_pdf_processor"]
+    auto_start: false
+    enabled: false
+    note: "Optional: Install via pip install mcp-pdf-processor if needed"
+
+# Environment variables for LLM providers
+environment_variables:
+  # Local LLM (Ollama)
+  - name: "OLLAMA_HOST"
+    value: "http://localhost:11434"
+    description: "Ollama local LLM endpoint"
+    required: false
+
+  # Cloud LLM providers (set as needed)
+  - name: "OPENAI_API_KEY"
+    description: "OpenAI API key for GPT models"
+    required: false
+
+  - name: "ANTHROPIC_API_KEY"
+    description: "Anthropic API key for Claude models"
+    required: false
+
+  - name: "GOOGLE_API_KEY"
+    description: "Google API key for Gemini models"
+    required: false
+
+# Tools and frameworks to ensure are available
+required_tools:
+  - name: "python"
+    version: ">=3.10"
+    description: "Python runtime for backend"
+
+  - name: "uvicorn"
+    description: "ASGI server for FastAPI"
+    install_cmd: "pip install uvicorn[standard]"
+
+  - name: "pdfplumber"
+    description: "PDF text extraction library"
+    install_cmd: "pip install pdfplumber"
+
+  - name: "node"
+    version: ">=18"
+    description: "Node.js for MCP servers (playwright, filesystem)"
+    optional: true
+
+# Custom test commands for cloud agent
+test_commands:
+  - description: "Run connector_parser tests"
+    command: "cd server/agents && python run_tests.py"
+
+  - description: "Test API endpoints"
+    command: "cd tests && python test_endpoints.py"
+
+  - description: "Test board vs component classification"
+    command: "cd tests && python test_board_vs_component.py"
+
+  - description: "Start development server"
+    command: "cd server && ./start.sh"
+
+# Documentation paths cloud agent should reference
+documentation_paths:
+  - path: "docs/ARCHITECTURE.md"
+    description: "Agent personas and workflow overview"
+    priority: "high"
+
+  - path: "docs/DEVELOPMENT.md"
+    description: "Server architecture and orchestrator notes"
+    priority: "high"
+
+  - path: "docs/COMPONENTS.md"
+    description: "Hardware map schema and component definitions"
+    priority: "medium"
+
+  - path: ".github/copilot-instructions.md"
+    description: "Quick reference for build, test, and architecture"
+    priority: "high"
+
+  - path: "docs/guides/"
+    description: "Workflow guides and advanced usage"
+    priority: "medium"
+
+# Recommended agent configurations
+agent_capabilities:
+  code_editing:
+    enabled: true
+    allowed_paths:
+      - "server/"
+      - "tests/"
+      - "docs/"
+
+  test_execution:
+    enabled: true
+    timeout_seconds: 120
+    capture_output: true
+
+  file_operations:
+    enabled: true
+    allowed_operations: ["read", "write", "create"]
+    excluded_paths:
+      - "server/output/"  # git-ignored outputs
+      - ".git/"
+      - "node_modules/"
+      - "__pycache__/"
+
+# Notes for future sessions
+notes: |
+  - Playwright is recommended for automated web UI testing (e.g., PDF upload, component selection, artifact download)
+  - Filesystem tools help batch-process generated artifacts across multiple runs
+  - PDF tools augment pdfplumber for complex datasheet parsing
+  - MCP servers require Node.js 18+ for Playwright and filesystem; ensure it's installed before first use
+  - Test fixtures (Jetson, AR2020 PDFs) are in tests/ directory for quick validation

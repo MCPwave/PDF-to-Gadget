@@ -1,5 +1,5 @@
 """
-@raci_builder  — RAID matrix generator for the PDF-to-Gadget pipeline.
+@raid_builder  — RAID matrix generator for the PDF-to-Gadget pipeline.
 
 Takes hw_map + driver_info list (from kernel_scout.lookup_drivers) and
 produces:
@@ -8,11 +8,11 @@ produces:
   - raid_json  : list of row dicts with driver notes
   - recommended_uc : "UC22" | "UC24" | "UC26" (lowest risk)
 
-RAID framework:
-  R — Responsible: Driver maintainer (vendor/kernel maintainer)
-  A — Accountable: Ubuntu Core integration team
-  I — Informed: Hardware manufacturer / BSP engineer
-  D — Drivers: Source repository (kernel.org, vendor GitHub, etc.)
+RAID framework (PMBOK) for component analysis:
+  R — Risk: Integration risks + driver status (risk factors that could impact delivery)
+  A — Assumption: Technical assumptions (kernel version, dependencies, constraints)
+  I — Issue: Specific issues, known limitations, blockers (problems that need resolution)
+  D — Decision: Decisions made + recommendations (action items, chosen approach)
 """
 from __future__ import annotations
 import csv
@@ -21,11 +21,11 @@ import html as html_lib
 import re
 from typing import List, Dict, Tuple
 
-# ── RAID roles ─────────────────────────────────────────────────────────────────
-_R = "Driver Maintainer"
-_A = "UC Integration"
-_I = "HW Vendor / BSP"
-_D = "Kernel / Vendor Repo"
+# ── RAID roles (PMBOK framework for component analysis) ──────────────────────
+_R = "Risk"                # Integration risks + driver status
+_A = "Assumptions"         # Technical assumptions (kernel version, constraints)
+_I = "Issues"              # Specific blockers, known limitations
+_D = "Decisions"           # Decisions made + recommendations
 
 # ── Ubuntu Core → base kernel version ─────────────────────────────────────────
 _UC_KERNELS: dict[str, Tuple[int, int]] = {
@@ -158,6 +158,7 @@ def _build_rows(drivers: List[Dict]) -> List[Dict]:
          since      = d.get("kernel_since", "unknown")
          maintainer = d.get("maintainer", "")
          github_repo = d.get("github_repo_name", "")
+         driver_source = d.get("driver_source", "unknown")
 
          # per-UC availability
          uc_status = {
@@ -167,6 +168,13 @@ def _build_rows(drivers: List[Dict]) -> List[Dict]:
 
          # Generate driver notes
          driver_notes_text = _driver_notes(d)
+         
+         # Risk column: combine driver status with source (kernel/vendor_public/unknown)
+         # Format: "status (source)" e.g., "mainline (kernel)" or "unknown (vendor_public)"
+         risk_label = drv_status
+         if driver_source and driver_source != "unknown":
+             source_label = driver_source.replace("_", " ")  # vendor_public → vendor public
+             risk_label = f"{drv_status} ({source_label})"
 
          rows.append({
              "peripheral":    d.get("peripheral_name", d.get("peripheral_id", "")),
@@ -176,6 +184,7 @@ def _build_rows(drivers: List[Dict]) -> List[Dict]:
              "kconfig":       d.get("kconfig", ""),
              "source_path":   d.get("source_path", ""),
              "status":        drv_status,
+             "driver_source": driver_source,
              "effort":        d.get("effort", "investigate"),
              "github_url":    d.get("github_url", ""),
              "github_repo_name": github_repo,
@@ -187,10 +196,10 @@ def _build_rows(drivers: List[Dict]) -> List[Dict]:
              "UC24": uc_status["UC24"],
              "UC26": uc_status["UC26"],
              # RAID — team roles & drivers
-             "R": _R,
-             "A": _A,
-             "I": _I,
-             "D": _D,
+              "R": risk_label,  # Risk: status (source) e.g., "mainline (kernel)" or "unknown (vendor_public)"
+              "A": since,       # Assumptions (kernel version requirement)
+              "I": d.get("notes", ""),  # Issues (known limitations/workarounds)
+              "D": effort,      # Decision (recommended action: low/medium/high/investigate)
          })
      return rows
 
@@ -267,10 +276,10 @@ def _to_html(rows: List[Dict], board: str, soc: str, recommended: str) -> str:
         <th>Status</th>
         <th>Effort</th>
         {uc_headers}
-        <th title="Responsible: Driver maintainer">R</th>
-        <th title="Accountable: UC integration">A</th>
-        <th title="Informed: Hardware vendor">I</th>
-        <th title="Drivers: Source repository">D</th>
+        <th title="Risk: Integration risks + driver status">R</th>
+        <th title="Assumptions: Technical assumptions (kernel version, constraints)">A</th>
+        <th title="Issues: Specific blockers and known limitations">I</th>
+        <th title="Decisions: Decisions made and recommendations">D</th>
         <th>Notes</th>
       </tr>
     </thead>"""
@@ -321,14 +330,14 @@ def _to_html(rows: List[Dict], board: str, soc: str, recommended: str) -> str:
         <td><span class="raid-badge" style="background:{bg};color:{fg};">{html_lib.escape(status)}</span></td>
         <td>{efflabel}</td>
         {uc_cells}
-        <td class="raid-r" title="{html_lib.escape(_R)}">{maintainer or '—'}</td>
-        <td class="raid-a" title="{html_lib.escape(_A)}">UC</td>
-        <td class="raid-i" title="{html_lib.escape(_I)}">Vendor</td>
-        <td class="raid-d" title="{html_lib.escape(_D)}">{repo_name or '—'}</td>
+         <td class="raid-r" title="{html_lib.escape(_R)}" style="text-align:center;font-size:11px;">{html_lib.escape(r["R"]) if r["R"] else "—"}</td>
+         <td class="raid-a" title="{html_lib.escape(_A)}" style="text-align:center;font-size:11px;">{html_lib.escape(r["A"]) if r["A"] else "—"}</td>
+         <td class="raid-i" title="{html_lib.escape(_I)}" style="text-align:center;font-size:11px;">{html_lib.escape(r["I"][:20]) if r["I"] else "—"}</td>
+         <td class="raid-d" title="{html_lib.escape(_D)}" style="text-align:center;font-size:11px;">{html_lib.escape(r["D"]) if r["D"] else "—"}</td>
         <td style="font-size:11px;max-width:300px;word-wrap:break-word;">{driver_notes}</td>
       </tr>""")
 
-    legend = f"""
+     legend = f"""
     <div class="raid-legend">
       <strong>{html_lib.escape(board)}</strong> · {html_lib.escape(soc)}
       &nbsp;|&nbsp;
@@ -337,10 +346,10 @@ def _to_html(rows: List[Dict], board: str, soc: str, recommended: str) -> str:
       <span style="color:#ff8800">🟠 vendor</span> &nbsp;
       <span style="color:#ff4444">🔴 unknown</span>
       &nbsp;|&nbsp;
-      <strong>R</strong>=Responsible (driver maintainer) &nbsp;
-      <strong>A</strong>=Accountable (UC integration) &nbsp;
-      <strong>I</strong>=Informed (hardware vendor) &nbsp;
-      <strong>D</strong>=Drivers (source repo)
+      <strong>R</strong>=Risk (integration + driver status) &nbsp;
+      <strong>A</strong>=Assumptions (technical constraints) &nbsp;
+      <strong>I</strong>=Issues (blockers & limitations) &nbsp;
+      <strong>D</strong>=Decisions (recommendations & actions)
     </div>"""
 
     return f"""
