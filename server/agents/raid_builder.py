@@ -159,6 +159,7 @@ def _build_rows(drivers: List[Dict]) -> List[Dict]:
          maintainer = d.get("maintainer", "")
          github_repo = d.get("github_repo_name", "")
          driver_source = d.get("driver_source", "unknown")
+         effort     = d.get("effort", "investigate")
 
          # per-UC availability
          uc_status = {
@@ -185,7 +186,7 @@ def _build_rows(drivers: List[Dict]) -> List[Dict]:
              "source_path":   d.get("source_path", ""),
              "status":        drv_status,
              "driver_source": driver_source,
-             "effort":        d.get("effort", "investigate"),
+             "effort":        effort,
              "github_url":    d.get("github_url", ""),
              "github_repo_name": github_repo,
              "github_repo_url": d.get("github_repo_url", ""),
