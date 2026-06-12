@@ -1,6 +1,8 @@
 # PDF-to-Gadget Pipeline
 
-Convert hardware datasheets (PDF) into Ubuntu Core Gadget Snap artifacts — Device Tree, `gadget.yaml`, `snapcraft.yaml`, and a RACI kernel driver matrix — via a multi-agent AI pipeline.
+Convert hardware datasheets (PDF) into Ubuntu Core Gadget Snap artifacts — Device Tree, `gadget.yaml`, `snapcraft.yaml`, and a **RAID** kernel driver matrix — via a multi-agent AI pipeline.
+
+**RAID** = **Risk-Assumption-Issue-Decision** matrix for component integration analysis.
 
 ---
 
@@ -19,8 +21,8 @@ PDF Datasheet
     ▼
 hardware_map.json
     │
-    ├──▶ @kernel_scout ──── upstream Linux driver lookup
-    │         └─ @raci_builder → RACI matrix (HTML + CSV)
+    ├──▶ @kernel_scout ──── upstream Linux driver lookup + vendor repos
+    │         └─ @raid_builder → RAID matrix (HTML + CSV)
     │
     ├──▶ @dt_architect ──── Linux Device Tree Source (.dts)
     │         └─ pinmux conflict detection
@@ -45,11 +47,11 @@ Open **http://localhost:8000**
 
 ## Web UI
 
-1. **Upload** — drag-and-drop datasheet PDF
+1. **Upload** — drag-and-drop datasheet PDF or paste URL
 2. **Watch** — section-by-section extraction streams live in the terminal tab
 3. **Select** — tick the components you want included
-4. **Generate** — runs DTS + snap + RACI pipeline
-5. **Download** — `board.dts`, `gadget.yaml`, `snapcraft.yaml`, `raci.csv`, `hardware_map.json`
+4. **Generate** — runs DTS + snap + RAID pipeline
+5. **Download** — `board.dts`, `gadget.yaml`, `snapcraft.yaml`, `raid.csv`, `hardware_map.json`
 
 ---
 
@@ -57,11 +59,11 @@ Open **http://localhost:8000**
 
 | Agent | File | Role | Output |
 |-------|------|------|--------|
-| `@librarian` | `server/agents/librarian.py` | PDF → hardware map | `hardware_map.json` |
+| `@librarian` | `server/agents/librarian.py` | PDF/URL → hardware map | `hardware_map.json` |
 | `@dt_architect` | `server/agents/dt_architect.py` | hardware map → DTS | `board.dts` |
 | `@snap_engineer` | `server/agents/snap_engineer.py` | hardware map → snap files + diagram | `gadget.yaml`, `snapcraft.yaml`, Mermaid SVG |
-| `@kernel_scout` | `server/agents/kernel_scout.py` | peripheral → upstream driver lookup | driver list |
-| `@raci_builder` | `server/agents/raci_builder.py` | driver list → RACI matrix | `raci.csv`, HTML table |
+| `@kernel_scout` | `server/agents/kernel_scout.py` | peripheral → kernel + vendor driver lookup | driver list with source |
+| `@raid_builder` | `server/agents/raid_builder.py` | driver list → RAID matrix | `raid.csv`, HTML table |
 
 ---
 
@@ -72,8 +74,9 @@ Open **http://localhost:8000**
 | `GET`  | `/` | SPA web UI |
 | `GET`  | `/api/models` | List available LLM models |
 | `POST` | `/api/upload` | Upload PDF → SSE stream of section extraction |
+| `POST` | `/api/upload-url` | Parse URL (PDF/HTML/text) → SSE stream |
 | `POST` | `/api/generate` | Run full pipeline → SSE stream |
-| `POST` | `/api/raci` | Return RACI matrix for a session |
+| `POST` | `/api/raid` | Return RAID matrix for a session |
 | `GET`  | `/api/download/{file}` | Download generated artifact |
 
 ### SSE event types
@@ -85,7 +88,7 @@ Open **http://localhost:8000**
 
 **`/api/generate`** streams:
 - `log` / `conflict` / `error` / `done` — pipeline progress
-- `result` — final payload with all artifacts + `raci_html` + `raci_json`
+- `result` — final payload with all artifacts + `raid_html` + `raid_json`
 
 ---
 
@@ -163,25 +166,32 @@ Block widths reflect hardware complexity: high-bandwidth interfaces (Ethernet, U
 
 ---
 
-## RACI Matrix
+## RAID Matrix
 
-Kernel driver status per peripheral:
+**Risk-Assumption-Issue-Decision** matrix for component integration analysis:
 
-| Status | Meaning | Effort |
-|--------|---------|--------|
-| `mainline` | Merged upstream — just enable Kconfig | 🟢 Low |
-| `backport` | Newer kernel; needs backport | 🟡 Medium |
-| `wip` | Patch on LKML | 🟡 Medium |
-| `vendor` | Out-of-tree BSP driver | 🟠 High |
-| `unknown` | Not found | 🔴 Investigate |
+| Column | Meaning | Example |
+|--------|---------|---------|
+| **R** | **Risk**: integration risks + driver status | `mainline (kernel)`, `vendor (vendor_public)`, `unknown (unknown)` |
+| **A** | **Assumption**: technical requirements | `Linux v5.15`, `ARM64 + DMA required` |
+| **I** | **Issue**: known blockers/limitations | `Requires BSP patches`, `Out-of-tree driver` |
+| **D** | **Decision**: recommended action + effort | `Low` (use now), `High` (expert needed) |
 
-RACI roles:
-- **R** — BSP Engineer (does the work)
-- **A** — HW Architect (owns outcome)
-- **C** — Upstream kernel maintainer (consulted)
-- **I** — PM / Integration Team (informed)
+**Driver Status**:
+- `mainline` — upstream Linux kernel
+- `backport` — needs backport from newer kernel
+- `vendor` — proprietary or out-of-tree driver
+- `unknown` — not found in kernel or vendor repos
 
-`@kernel_scout` covers 100+ `(SoC, peripheral_type)` combinations for BCM2711, RK3xxx, i.MX 8M/9, AM62x, MT8xxx, STM32MP, Allwinner, Amlogic, Qualcomm, Exynos and more.
+**Driver Source**:
+- `kernel` — found in upstream Linux kernel
+- `vendor_public` — found in vendor public GitHub repo
+- `unknown` — not found
+
+`@kernel_scout` searches:
+1. **Linux kernel** — 100+ SoC/peripheral combinations
+2. **Vendor public repos** — Broadcom, Rockchip, NXP, STM, Allwinner, Qualcomm, NVIDIA, AMD, Intel, ARM
+3. **GPU vendors** — NVIDIA (RTX, Tesla, Jetson), AMD (Radeon, ROCM), Intel Arc, Qualcomm Adreno, ARM Mali
 
 ---
 
@@ -194,7 +204,7 @@ RACI roles:
 (r"MY_SOC_REGEX", "arm64", "Cortex-A55"),
 ```
 
-### Add a driver to the RACI DB
+### Add a driver to the RAID DB
 
 `server/agents/kernel_scout.py` → `_DRIVER_DB`:
 ```python
@@ -227,7 +237,7 @@ cop1/
 │   ├── snap-engineer.md              # Snap packaging guide
 │   ├── system-manifest.md            # System stage tracking
 │   ├── web-interface-logic.md        # Web UI & diagram generation
-│   ├── superpowers.md                # (reserved)
+│   ├── URL_PARSING_GUIDE.md          # URL datasheet parsing (PDF/HTML/text)
 │   └── guides/
 │       ├── multi-pdf-workflow.md     # Multi-PDF merging workflow
 │       ├── component-extraction.md   # Board vs component detection
@@ -242,11 +252,11 @@ cop1/
 │   ├── main.py                       # FastAPI app, SSE endpoints
 │   ├── start.sh                      # Launch script
 │   ├── agents/                       # AI agent modules
-│   │   ├── librarian.py              # PDF → hardware_map
+│   │   ├── librarian.py              # PDF/URL → hardware_map
 │   │   ├── dt_architect.py           # hardware_map → DTS
 │   │   ├── snap_engineer.py          # hardware_map → snap + diagram
-│   │   ├── kernel_scout.py           # peripheral → driver lookup
-│   │   └── raci_builder.py           # driver list → RACI matrix
+│   │   ├── kernel_scout.py           # peripheral → driver lookup (kernel + vendor repos)
+│   │   └── raid_builder.py           # driver list → RAID matrix
 │   ├── static/
 │   │   └── index.html                # Single-page web UI
 │   └── output/                       # Generated artifacts (git-ignored)
