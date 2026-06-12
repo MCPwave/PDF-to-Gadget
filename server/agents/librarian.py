@@ -1025,7 +1025,36 @@ def _call_llm(prompt: str, model_str: str, api_key: str) -> str:
     Send prompt to the selected provider. Returns raw response string.
     model_str: "provider:model" or "" for auto-detect.
     Raises RuntimeError if all providers fail.
+    
+    NOTE: Web server enforces 10-second timeout to prevent hanging on missing LLM.
     """
+    import threading
+    
+    result_container = [None, None]  # [result, error]
+    
+    def call_llm_in_thread():
+        try:
+            result_container[0] = _call_llm_impl(prompt, model_str, api_key)
+        except Exception as e:
+            result_container[1] = e
+    
+    thread = threading.Thread(target=call_llm_in_thread, daemon=True)
+    thread.start()
+    thread.join(timeout=10)  # Wait max 10 seconds
+    
+    if thread.is_alive():
+        raise RuntimeError("LLM call timeout (10s) - no provider responding")
+    
+    if result_container[1]:
+        raise result_container[1]
+    if result_container[0] is None:
+        raise RuntimeError("LLM call failed - no response")
+    
+    return result_container[0]
+
+
+def _call_llm_impl(prompt: str, model_str: str, api_key: str) -> str:
+    """Internal implementation of _call_llm with timeout wrapper."""
     errors: list[str] = []
 
     def _resolve_key(provider: str) -> str:
@@ -1633,43 +1662,45 @@ def _run_sections_internal(sections, model_override, api_key, disable_heuristic_
             except Exception as e:
                 log.append(f"       ↳ heuristic error: {e}")
             
-            # Extract components even when using heuristic
-            try:
-                components = extract_components_from_pdf(text)
-                if components:
-                    if not merged:
-                        merged = {
-                            "board": None,
-                            "soc": None,
-                            "arch": None,
-                            "cpu_core": None,
-                            "cpu_count": None,
-                            "cpu_freq_mhz": None,
-                            "ram_mb": None,
-                            "peripherals": [],
-                            "power_rails": []
+            # Component extraction requires LLM (detect_components_with_llm)
+            # Skip when LLM unavailable to avoid hanging on LLM calls
+            if llm_available:
+                try:
+                    components = extract_components_from_pdf(text)
+                    if components:
+                        if not merged:
+                            merged = {
+                                "board": None,
+                                "soc": None,
+                                "arch": None,
+                                "cpu_core": None,
+                                "cpu_count": None,
+                                "cpu_freq_mhz": None,
+                                "ram_mb": None,
+                                "peripherals": [],
+                                "power_rails": []
+                            }
+                        
+                        if "peripherals" not in merged:
+                            merged["peripherals"] = []
+                        
+                        existing_component_ics = {
+                            p.get("component_ic", {}).get("name", "").lower()
+                            for p in merged.get("peripherals", [])
+                            if p.get("is_component")
                         }
-                    
-                    if "peripherals" not in merged:
-                        merged["peripherals"] = []
-                    
-                    existing_component_ics = {
-                        p.get("component_ic", {}).get("name", "").lower()
-                        for p in merged.get("peripherals", [])
-                        if p.get("is_component")
-                    }
-                    
-                    for comp in components:
-                        ic_name = comp.get("component_ic", {}).get("name", "").lower()
-                        if ic_name and ic_name not in existing_component_ics:
-                            merged["peripherals"].append(comp)
-                            existing_component_ics.add(ic_name)
-                    
-                    n_comps = len([c for c in merged.get("peripherals", []) if c.get("is_component")])
-                    if n_comps > len([p for p in hw.get("peripherals", []) if p.get("is_component")]):
-                        log.append(f"       ↳ components: {len(components)} detected")
-            except Exception as e:
-                pass
+                        
+                        for comp in components:
+                            ic_name = comp.get("component_ic", {}).get("name", "").lower()
+                            if ic_name and ic_name not in existing_component_ics:
+                                merged["peripherals"].append(comp)
+                                existing_component_ics.add(ic_name)
+                        
+                        n_comps = len([c for c in merged.get("peripherals", []) if c.get("is_component")])
+                        if n_comps > len([p for p in hw.get("peripherals", []) if p.get("is_component")]):
+                            log.append(f"       ↳ components: {len(components)} detected")
+                except Exception as e:
+                    pass
             continue
 
         # pick appropriate prompt
