@@ -59,6 +59,17 @@ def _cleanup_old_sessions(max_age_seconds: int = 3600):
         print(f"[cleanup] Removed {len(expired)} old session(s)")
 
 
+def _agent_event(agent_name: str, agent_icon: str, message: str = ""):
+    """Generate an agent_active event for UI highlighting."""
+    payload = {
+        "type": "agent_active",
+        "agent": agent_name,
+        "icon": agent_icon,
+        "message": message
+    }
+    return f"data: {json.dumps(payload)}\n\n"
+
+
 # ── PDF section extraction ─────────────────────────────────────────────────────
 
 _HEADING_RE = re.compile(
@@ -402,6 +413,7 @@ async def _upload_stream(
                 failed_files.append(filename)
                 continue
             
+            yield _agent_event("librarian", "📚", "Extracting hardware map from PDF sections")
             yield _event(f"  🤖 @librarian — extracting hardware map "
                         f"(model: {model or 'auto-detect'})…", "log")
             if llm_only_mode:
@@ -861,6 +873,7 @@ async def _pipeline_stream(session_id: str, selected_ids: list[str], alternative
     await asyncio.sleep(0.3)
 
     # ── @dt_architect ──────────────────────────────────────────────────────────
+    yield _agent_event("dt_architect", "🏗️", "Generating Device Tree Source")
     yield event("🏗️  @dt_architect — generating Device Tree Source…", "log")
     await asyncio.sleep(0.5)
     try:
@@ -875,6 +888,7 @@ async def _pipeline_stream(session_id: str, selected_ids: list[str], alternative
     await asyncio.sleep(0.3)
 
     # ── @snap_engineer ─────────────────────────────────────────────────────────
+    yield _agent_event("snap_engineer", "📦", "Building Gadget Snap files")
     yield event("📦 @snap_engineer — building Gadget Snap files…", "log")
     await asyncio.sleep(0.5)
     try:
@@ -901,6 +915,7 @@ async def _pipeline_stream(session_id: str, selected_ids: list[str], alternative
     await asyncio.sleep(0.2)
 
     # ── @kernel_scout + @raid_builder ─────────────────────────────────────────
+    yield _agent_event("kernel_scout", "🔬", "Looking up Linux kernel drivers")
     yield event("🔬 @kernel_scout — looking up upstream Linux kernel drivers…", "log")
     await asyncio.sleep(0.3)
     try:
@@ -911,6 +926,7 @@ async def _pipeline_stream(session_id: str, selected_ids: list[str], alternative
             yield event(f"⚠️  GitHub-enriched lookup failed ({e_online}) — retrying offline", "log")
             drivers = kernel_scout.lookup_drivers(filtered_map, online=False)
         raid_data  = raid_builder.build(filtered_map, drivers)
+        yield _agent_event("raid_builder", "📊", "Building RAID analysis matrix")
         raid_path  = OUTPUT_DIR / f"{session_id}_raid.csv"
         raid_path.write_text(raid_data["raid_csv"])
         mainline_n = sum(1 for d in drivers if d.get("status") == "mainline")

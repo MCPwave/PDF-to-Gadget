@@ -440,6 +440,35 @@
   }
   @keyframes blink { 50% { opacity: 0; } }
 
+  /* Agent status badge */
+  #agent-status {
+    padding: 16px;
+    background: rgba(15,15,15,.5);
+    border-bottom: 1px solid var(--border);
+    animation: slideDown 0.4s ease-out;
+  }
+  @keyframes slideDown {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  #agent-badge {
+    transition: all 0.3s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  #agent-badge:hover {
+    background: rgba(240,107,32,.25);
+    box-shadow: 0 2px 8px rgba(240,107,32,.2);
+  }
+
+  /* Agent-specific badge colors */
+  #agent-status.librarian #agent-badge { border-left-color: #4DD0E1; }
+  #agent-status.dt_architect #agent-badge { border-left-color: #FF9800; }
+  #agent-status.snap_engineer #agent-badge { border-left-color: #9C27B0; }
+  #agent-status.kernel_scout #agent-badge { border-left-color: #F44336; }
+  #agent-status.raid_builder #agent-badge { border-left-color: #8BC34A; }
+
   /* Code viewer */
   .code-viewer {
     display: flex;
@@ -1060,6 +1089,13 @@
 
     <!-- Terminal tab -->
     <div class="tab-content active" id="tab-terminal">
+      <div id="agent-status" style="display: none; margin-bottom: 20px;">
+        <div style="font-size: 14px; font-weight: 500; color: var(--canonical-orange); margin-bottom: 8px;">Active Agent</div>
+        <div id="agent-badge" style="display: inline-block; padding: 8px 16px; border-radius: 6px; background: rgba(240,107,32,.15); border-left: 3px solid var(--canonical-orange); font-weight: 500;">
+          <span id="agent-icon">📚</span> <span id="agent-name">librarian</span>
+          <span id="agent-message" style="color: var(--muted); font-size: 13px; margin-left: 8px;"></span>
+        </div>
+      </div>
       <div class="terminal" id="terminal">
         <div class="log-line log">PDF-to-Gadget Pipeline ready.</div>
         <div class="log-line log">Upload a datasheet to begin.</div>
@@ -1394,6 +1430,8 @@
                   requestStopUpload();
                   stopUploadPending = false;
                 }
+              } else if (evt.type === 'agent_active') {
+                updateAgentStatus(evt.agent, evt.icon, evt.message);
               } else if (evt.type === 'log') {
                 logMsg(evt.message, 'log');
               } else if (evt.type === 'error') {
@@ -1626,6 +1664,8 @@
 
           if (evt.type === 'log') {
             logMsg(evt.message);
+          } else if (evt.type === 'agent_active') {
+            updateAgentStatus(evt.agent, evt.icon, evt.message);
           } else if (evt.type === 'error') {
             logMsg(`❌ ${evt.message}`, 'error');
           } else if (evt.type === 'upload_started') {
@@ -2102,6 +2142,23 @@
     newCur.className = 'cursor';
     term.appendChild(newCur);
     term.scrollTop = term.scrollHeight;
+  }
+
+  function updateAgentStatus(agent, icon, message) {
+    const status = document.getElementById('agent-status');
+    const badge = document.getElementById('agent-badge');
+    const nameSpan = document.getElementById('agent-name');
+    const iconSpan = document.getElementById('agent-icon');
+    const msgSpan = document.getElementById('agent-message');
+    
+    // Show status banner
+    status.style.display = 'block';
+    status.className = agent;
+    
+    // Update content
+    iconSpan.textContent = icon;
+    nameSpan.textContent = agent;
+    msgSpan.textContent = message ? '— ' + message : '';
   }
 
   function clearTerminal() {
