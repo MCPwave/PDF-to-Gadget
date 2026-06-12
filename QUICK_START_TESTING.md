@@ -13,7 +13,7 @@ tests/AR2020.pdf                             (Component: onsemi AR2020 camera se
 
 ```bash
 # 1. Start server
-cd /home/capo02/work/cop1/server
+cd server
 uvicorn main:app --host 0.0.0.0 --port 8000
 
 # 2. Open browser

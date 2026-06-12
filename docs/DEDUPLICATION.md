@@ -89,7 +89,7 @@
 ## How to Run
 
 ```bash
-cd /home/capo02/work/cop1/server/agents
+cd server/agents
 python3 test_component_deduplication.py
 ```
 

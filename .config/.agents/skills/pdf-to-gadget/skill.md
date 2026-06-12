@@ -100,7 +100,7 @@ System prevents component duplicates via:
 
 ## Server
 
-**Start:** `cd /home/capo02/work/cop1/server && uvicorn main:app --host 0.0.0.0 --port 8000 --reload`
+**Start:** `cd server && uvicorn main:app --host 0.0.0.0 --port 8000 --reload`
 
 **URL:** `http://localhost:8000`
 

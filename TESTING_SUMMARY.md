@@ -71,7 +71,7 @@ See `docs/TEST_GUIDE.md` for detailed instructions:
 
 ```bash
 # Start server
-cd /home/capo02/work/cop1/server
+cd server
 uvicorn main:app --host 0.0.0.0 --port 8000
 
 # In browser: http://localhost:8000

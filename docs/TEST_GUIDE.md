@@ -48,7 +48,7 @@ Two production datasheets are available in `/tests/`:
 
 ```bash
 # Start server
-cd /home/capo02/work/cop1/server
+cd server
 uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
@@ -72,7 +72,7 @@ Then:
 ### 2. API Test (Programmatic)
 
 ```bash
-cd /home/capo02/work/cop1/tests
+cd tests
 
 # Stream extraction events (SSE)
 curl -s -X POST \
@@ -94,32 +94,35 @@ data: {"type":"upload_done","board_name":"Nvidia Jetson Orin NX",...}
 
 ```python
 import sys
-sys.path.insert(0, '/home/capo02/work/cop1/server')
+import os
+
+# Add server directory to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'server'))
 
 from agents import librarian
 import pdfplumber
 
 def get_pdf_sections(path):
-    sections = []
-    with pdfplumber.open(path) as pdf:
-        for i, page in enumerate(pdf.pages):
-            text = page.extract_text() or ""
-            if text.strip():
-                sections.append({
-                    "heading": f"Page {i+1}",
-                    "text": text,
-                    "page_start": i+1,
-                    "page_end": i+1
-                })
-    return sections
+     sections = []
+     with pdfplumber.open(path) as pdf:
+         for i, page in enumerate(pdf.pages):
+             text = page.extract_text() or ""
+             if text.strip():
+                 sections.append({
+                     "heading": f"Page {i+1}",
+                     "text": text,
+                     "page_start": i+1,
+                     "page_end": i+1
+                 })
+     return sections
 
 # Extract Jetson board
-sections_board = get_pdf_sections('/home/capo02/work/cop1/tests/Jetson_Orin_NX_DS-10712-001_v0.5.pdf')
+sections_board = get_pdf_sections('Jetson_Orin_NX_DS-10712-001_v0.5.pdf')
 hw_board, _, logs = librarian.run_sections(sections_board)
 print("Board SoC:", hw_board.get('soc'))
 
 # Extract AR2020 component
-sections_camera = get_pdf_sections('/home/capo02/work/cop1/tests/AR2020.pdf')
+sections_camera = get_pdf_sections('AR2020.pdf')
 hw_camera, _, logs = librarian.run_sections(sections_camera)
 
 # Find components

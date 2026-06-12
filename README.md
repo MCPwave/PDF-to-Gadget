@@ -223,7 +223,7 @@ Block widths reflect hardware complexity: high-bandwidth interfaces (Ethernet, U
 ## Project Structure
 
 ```
-cop1/
+.
 ├── README.md                          # Main readme
 ├── .github/
 │   └── copilot-instructions.md       # AI assistant instructions

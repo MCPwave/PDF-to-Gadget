@@ -247,7 +247,7 @@ except Exception as e:
 
 Run endpoint test suite:
 ```bash
-cd /home/capo02/work/cop1
+cd .
 python3 test_endpoints.py
 ```
 
